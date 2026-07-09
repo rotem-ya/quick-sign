@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/placement.dart';
@@ -7,11 +9,12 @@ import '../services/export_service.dart';
 ///
 /// Lives in the same transformed coordinate space as the pages (inside the
 /// zoomable document Stack), positioned in document coordinates via
-/// [pageRect]. Drag / pinch gestures start on the overlay and win the arena
-/// against the InteractiveViewer; drag deltas are divided by the current zoom
-/// scale so the overlay tracks the finger 1:1.
+/// [pageRect].
 ///
-/// Tap selects the item, showing delete (✕) and resize (+/−) handles.
+/// Tap selects the item, showing handles: ✕ delete, ⟳ rotate, +/− resize.
+/// The handles sit INSIDE the widget's bounds — Flutter does not hit-test
+/// children painted outside their parent's rect, so the box is padded and the
+/// content inset, keeping every handle tappable.
 class PlacementOverlay extends StatefulWidget {
   const PlacementOverlay({
     super.key,
@@ -35,10 +38,15 @@ class PlacementOverlay extends StatefulWidget {
 class _PlacementOverlayState extends State<PlacementOverlay> {
   bool _selected = false;
   double _startWidthFraction = 0;
+  double _startRotation = 0;
 
   static const double _minWidthFraction = 0.05;
   static const double _maxWidthFraction = 0.95;
   static const double _resizeStep = 1.15;
+  static const double _rotateStep = math.pi / 12; // 15°
+
+  /// Padding around the content that hosts the handles.
+  static const double _handlePad = 22;
 
   Placement get p => widget.placement;
 
@@ -46,6 +54,7 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
 
   void _onScaleStart(ScaleStartDetails details) {
     _startWidthFraction = p.widthFraction;
+    _startRotation = p.rotation;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -55,6 +64,7 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
     if (details.pointerCount > 1) {
       p.widthFraction = (_startWidthFraction * details.scale)
           .clamp(_minWidthFraction, _maxWidthFraction);
+      p.rotation = _startRotation + details.rotation;
     }
     widget.onChanged();
   }
@@ -62,6 +72,11 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
   void _resize(double factor) {
     p.widthFraction =
         (p.widthFraction * factor).clamp(_minWidthFraction, _maxWidthFraction);
+    widget.onChanged();
+  }
+
+  void _rotate() {
+    p.rotation = (p.rotation + _rotateStep) % (2 * math.pi);
     widget.onChanged();
   }
 
@@ -76,14 +91,15 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
         : width / p.aspectRatio;
     final cx = rect.left + p.nx * rect.width;
     final cy = rect.top + p.ny * rect.height;
+    final scheme = Theme.of(context).colorScheme;
 
     return Positioned(
-      left: cx - width / 2,
-      top: cy - height / 2,
-      width: width,
-      height: height,
+      left: cx - width / 2 - _handlePad,
+      top: cy - height / 2 - _handlePad,
+      width: width + 2 * _handlePad,
+      height: height + 2 * _handlePad,
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+        behavior: _selected ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
         onScaleStart: _onScaleStart,
         onScaleUpdate: _onScaleUpdate,
         onLongPress: () => setState(() => _selected = true),
@@ -91,43 +107,58 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _selected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.transparent,
-                    width: 1.5,
+            Positioned(
+              left: _handlePad,
+              top: _handlePad,
+              width: width,
+              height: height,
+              child: Transform.rotate(
+                angle: p.rotation,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color:
+                          _selected ? scheme.primary : Colors.transparent,
+                      width: 1.5,
+                    ),
                   ),
+                  child: isNote ? _noteContent(noteStyle!) : _imageContent(),
                 ),
-                child: isNote ? _noteContent(noteStyle!) : _imageContent(),
               ),
             ),
             if (_selected) ...[
               PositionedDirectional(
-                top: -16,
-                start: -16,
+                top: 0,
+                start: 0,
                 child: _Handle(
-                  color: Theme.of(context).colorScheme.error,
+                  color: scheme.error,
                   icon: Icons.close,
                   onTap: widget.onDelete,
                 ),
               ),
               PositionedDirectional(
-                bottom: -16,
-                end: -16,
+                top: 0,
+                end: 0,
                 child: _Handle(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: scheme.secondary,
+                  icon: Icons.rotate_right,
+                  onTap: _rotate,
+                ),
+              ),
+              PositionedDirectional(
+                bottom: 0,
+                end: 0,
+                child: _Handle(
+                  color: scheme.primary,
                   icon: Icons.add,
                   onTap: () => _resize(_resizeStep),
                 ),
               ),
               PositionedDirectional(
-                bottom: -16,
-                start: -16,
+                bottom: 0,
+                start: 0,
                 child: _Handle(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: scheme.primary,
                   icon: Icons.remove,
                   onTap: () => _resize(1 / _resizeStep),
                 ),
@@ -201,8 +232,8 @@ class _Handle extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(7),
-          child: Icon(icon, size: 18, color: Colors.white),
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 20, color: Colors.white),
         ),
       ),
     );

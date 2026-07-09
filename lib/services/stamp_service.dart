@@ -7,6 +7,22 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Parameters for [StampService.cropAndClean] — sendable to a compute isolate.
+class StampCropRequest {
+  const StampCropRequest({
+    required this.bytes,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+  });
+
+  final Uint8List bytes;
+
+  /// Normalized crop rect (0..1) in image coordinates.
+  final double left, top, right, bottom;
+}
+
 /// Captures, processes and stores the user's stamp — plus the last drawn
 /// signature — so both can be placed with a single tap.
 class StampService {
@@ -63,6 +79,26 @@ class StampService {
       result = img.copyCrop(rgba, x: x, y: y, width: w, height: h);
     }
     return Uint8List.fromList(img.encodePng(result));
+  }
+
+  /// Crops [bytes] to the normalized rect (0..1 in image coordinates), then
+  /// removes the white background. Used when the user marks the stamp region
+  /// inside a photographed / uploaded document. Returns PNG bytes.
+  static Uint8List cropAndClean(StampCropRequest request) {
+    final source = img.decodeImage(request.bytes);
+    if (source == null) {
+      throw const FormatException('Unsupported image');
+    }
+    final x = (request.left * source.width).round().clamp(0, source.width - 1);
+    final y = (request.top * source.height).round().clamp(0, source.height - 1);
+    final w =
+        ((request.right - request.left) * source.width).round().clamp(1, source.width - x);
+    final h = ((request.bottom - request.top) * source.height)
+        .round()
+        .clamp(1, source.height - y);
+    final cropped = img.copyCrop(source, x: x, y: y, width: w, height: h);
+    return removeWhiteBackground(
+        Uint8List.fromList(img.encodePng(cropped)));
   }
 
   /// Draws the signature centered on top of the stamp (ink over stamp, like

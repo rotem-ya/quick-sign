@@ -76,30 +76,32 @@ class ExportService {
     canvas.drawImage(base, ui.Offset.zero, paint);
 
     for (final placement in placements) {
+      canvas.save();
+      // Rotate the canvas around the placement center so images and notes
+      // land exactly like their on-screen overlay.
+      canvas.translate(placement.nx * w, placement.ny * h);
+      canvas.rotate(placement.rotation);
       switch (placement.type) {
         case PlacementType.signature:
         case PlacementType.stamp:
           final bytes = placement.imageBytes;
-          if (bytes == null) continue;
+          if (bytes == null) break;
           final image = await _decodeUiImage(bytes);
           final width = placement.widthFraction * w;
           final height = width * image.height / image.width;
-          final rect = ui.Rect.fromCenter(
-            center: ui.Offset(placement.nx * w, placement.ny * h),
-            width: width,
-            height: height,
-          );
           canvas.drawImageRect(
             image,
             ui.Rect.fromLTWH(
                 0, 0, image.width.toDouble(), image.height.toDouble()),
-            rect,
+            ui.Rect.fromCenter(
+                center: ui.Offset.zero, width: width, height: height),
             paint,
           );
           image.dispose();
         case PlacementType.note:
-          _paintNote(canvas, placement, w, h);
+          _paintNote(canvas, placement, w);
       }
+      canvas.restore();
     }
 
     final picture = recorder.endRecording();
@@ -111,8 +113,9 @@ class ExportService {
     return data!.buffer.asUint8List();
   }
 
-  static void _paintNote(
-      ui.Canvas canvas, Placement placement, double w, double h) {
+  /// Paints the note centered on the canvas origin (the canvas is already
+  /// translated to the placement center and rotated).
+  static void _paintNote(ui.Canvas canvas, Placement placement, double w) {
     final text = placement.text;
     if (text == null || text.isEmpty) return;
     final rtl = isRtlText(text);
@@ -130,13 +133,7 @@ class ExportService {
       textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
       textAlign: rtl ? TextAlign.right : TextAlign.left,
     )..layout(minWidth: boxWidth, maxWidth: boxWidth);
-    painter.paint(
-      canvas,
-      ui.Offset(
-        placement.nx * w - boxWidth / 2,
-        placement.ny * h - painter.height / 2,
-      ),
-    );
+    painter.paint(canvas, ui.Offset(-boxWidth / 2, -painter.height / 2));
     painter.dispose();
   }
 

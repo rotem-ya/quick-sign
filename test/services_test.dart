@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import 'package:quick_sign/models/placement.dart';
+import 'package:quick_sign/services/document_metrics.dart';
 import 'package:quick_sign/services/export_service.dart';
 import 'package:quick_sign/services/import_service.dart';
 import 'package:quick_sign/services/stamp_service.dart';
@@ -146,6 +147,86 @@ void main() {
       }
       expect(ink, 400);
       expect(transparent, output.width * output.height - 400);
+    });
+  });
+
+  group('ExportService.rasterizePage rotation', () {
+    test('rotates the placement around its center', () async {
+      final basePng = _pngOf(400, 400, img.ColorRgba8(255, 255, 255, 255));
+      // A wide blue bar; rotated 90° it becomes tall.
+      final bar = _pngOf(200, 20, img.ColorRgba8(20, 20, 160, 255));
+
+      final placement = Placement(
+        type: PlacementType.stamp,
+        pageIndex: 0,
+        nx: 0.5,
+        ny: 0.5,
+        widthFraction: 0.5,
+        aspectRatio: 10,
+        imageBytes: bar,
+      )..rotation = 3.14159265 / 2;
+
+      final out = await ExportService.rasterizePage(
+        basePng: basePng,
+        placements: [placement],
+      );
+      final decoded = img.decodePng(out)!;
+      // Above the center: ink (bar now vertical). Beside the center: paper.
+      final above = decoded.getPixel(200, 130);
+      expect(above.b, greaterThan(100));
+      final beside = decoded.getPixel(130, 200);
+      expect(beside.r, greaterThan(200));
+    });
+  });
+
+  group('StampService.cropAndClean', () {
+    test('crops to the marked region before background removal', () {
+      // White image with a dark square only in the top-left quadrant.
+      final source = img.Image(width: 200, height: 200, numChannels: 4);
+      img.fill(source, color: img.ColorRgba8(255, 255, 255, 255));
+      img.fillRect(source,
+          x1: 20, y1: 20, x2: 59, y2: 59,
+          color: img.ColorRgba8(160, 20, 20, 255));
+      final bytes = Uint8List.fromList(img.encodePng(source));
+
+      final out = StampService.cropAndClean(StampCropRequest(
+        bytes: bytes,
+        left: 0,
+        top: 0,
+        right: 0.5,
+        bottom: 0.5,
+      ));
+
+      final decoded = img.decodePng(out)!;
+      // Content-cropped to the 40px square (plus small margin).
+      expect(decoded.width, inInclusiveRange(40, 50));
+      expect(decoded.height, inInclusiveRange(40, 50));
+    });
+  });
+
+  group('DocumentMetrics.medianTextLineHeightPts', () {
+    test('measures text height from a generated PDF', () {
+      final doc = PdfDocument();
+      final page = doc.pages.add();
+      final font = PdfStandardFont(PdfFontFamily.helvetica, 12);
+      for (var i = 0; i < 5; i++) {
+        page.graphics.drawString('Sample body text line $i', font,
+            bounds: ui.Rect.fromLTWH(40, 40.0 + i * 20, 400, 16));
+      }
+      final bytes = Uint8List.fromList(doc.saveSync());
+      doc.dispose();
+
+      final height = DocumentMetrics.medianTextLineHeightPts(bytes);
+      expect(height, isNotNull);
+      expect(height!, inInclusiveRange(8, 20));
+    });
+
+    test('returns null for a text-free page', () {
+      final doc = PdfDocument();
+      doc.pages.add();
+      final bytes = Uint8List.fromList(doc.saveSync());
+      doc.dispose();
+      expect(DocumentMetrics.medianTextLineHeightPts(bytes), isNull);
     });
   });
 

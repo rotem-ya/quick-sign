@@ -34,6 +34,9 @@ class Placement {
   /// Width relative to the page width. Height derives from [aspectRatio].
   double widthFraction;
 
+  /// Rotation around the placement center, in radians (clockwise).
+  double rotation = 0;
+
   /// Width / height of [imageBytes]. Used to size the overlay and the
   /// exported image without re-decoding.
   double aspectRatio;

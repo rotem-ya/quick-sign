@@ -1,13 +1,16 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../models/document_session.dart';
+import 'document_metrics.dart';
 import 'pdf_render_service.dart';
 
 /// Brings documents into the app (share intent / manual pick) and normalizes
@@ -68,11 +71,19 @@ class ImportService {
   Future<DocumentSession> openDocument(String path) async {
     final pdfPath = await _normalizeToPdf(path);
     final info = await _renderService.open(pdfPath);
-    return DocumentSession(
+    final session = DocumentSession(
       pdfPath: pdfPath,
       pageCount: info.pageCount,
       pageSizes: info.pageSizes,
     );
+    // Measure the document's text size in the background — placement
+    // defaults pick it up once available.
+    unawaited(File(pdfPath)
+        .readAsBytes()
+        .then((bytes) => compute(medianTextLineHeightEntry, bytes))
+        .then<void>((height) => session.bodyTextHeightPts = height)
+        .catchError((_) {}));
+    return session;
   }
 
   Future<String> _normalizeToPdf(String path) async {

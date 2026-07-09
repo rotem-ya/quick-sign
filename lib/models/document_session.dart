@@ -22,6 +22,12 @@ class DocumentSession {
   /// Per-page size in PDF points, index-aligned with pages.
   final List<Size> pageSizes;
 
+  /// Median height of a text line in the document, in PDF points. Filled
+  /// asynchronously after open; null when the document has no extractable
+  /// text (e.g. a photographed page). Used to size signatures / stamps /
+  /// notes proportionally to the document's own writing.
+  double? bodyTextHeightPts;
+
   /// Placements notifier so the UI rebuilds on add / move / resize / delete.
   final ValueNotifier<List<Placement>> placements =
       ValueNotifier<List<Placement>>(<Placement>[]);

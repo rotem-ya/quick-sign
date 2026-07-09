@@ -32,11 +32,17 @@ class _WorkScreenState extends State<WorkScreen> {
   static const double _pagePadding = 12;
   static const double _pageGap = 10;
 
-  /// Default placed sizes relative to the page width — proportional to
-  /// typical document text (a signature ≈ 4cm on an A4 page).
+  /// Fallback placed sizes relative to the page width, used when the document
+  /// has no extractable text to measure (e.g. a photographed page).
   static const double _signatureWidthFraction = 0.22;
   static const double _stampWidthFraction = 0.2;
   static const double _noteWidthFraction = 0.5;
+
+  /// Placement heights relative to the document's measured text-line height,
+  /// so defaults stay proportional to the writing in the document.
+  static const double _signatureLineHeights = 2.4;
+  static const double _stampLineHeights = 3.4;
+  static const double _noteLineHeights = 1.1;
 
   final PdfRenderService _renderService = PdfRenderService();
   late final ImportService _importService = ImportService(_renderService);
@@ -126,6 +132,32 @@ class _WorkScreenState extends State<WorkScreen> {
 
   // ── Placement ─────────────────────────────────────────────────────────────
 
+  /// Width fraction for an image placement, proportional to the measured
+  /// text-line height when available.
+  double _imageWidthFraction({
+    required int pageIndex,
+    required double aspect,
+    required double lineHeights,
+    required double fallback,
+  }) {
+    final session = _session!;
+    final lineH = session.bodyTextHeightPts;
+    if (lineH == null || lineH <= 0) return fallback;
+    final pageSize = session.pageSizes[pageIndex];
+    final heightPts = lineHeights * lineH;
+    return (heightPts * aspect / pageSize.width).clamp(0.08, 0.5);
+  }
+
+  double _noteWidthFractionFor(int pageIndex) {
+    final session = _session!;
+    final lineH = session.bodyTextHeightPts;
+    if (lineH == null || lineH <= 0) return _noteWidthFraction;
+    final pageSize = session.pageSizes[pageIndex];
+    final fontPts = _noteLineHeights * lineH;
+    // Inverse of ExportService.noteFontSize (0.04 * wf * pageWidth).
+    return (fontPts / (0.04 * pageSize.width)).clamp(0.2, 0.9);
+  }
+
   Future<void> _handlePageTap(
       int pageIndex, Offset local, Size renderedSize) async {
     final session = _session;
@@ -174,7 +206,9 @@ class _WorkScreenState extends State<WorkScreen> {
       pages: pages,
       nx: nx,
       ny: ny,
-      widthFraction: result.withStamp
+      lineHeights:
+          result.withStamp ? _stampLineHeights : _signatureLineHeights,
+      fallback: result.withStamp
           ? _stampWidthFraction * 1.2
           : _signatureWidthFraction,
     );
@@ -195,7 +229,8 @@ class _WorkScreenState extends State<WorkScreen> {
       pages: [pageIndex],
       nx: nx,
       ny: ny,
-      widthFraction: _stampWidthFraction,
+      lineHeights: _stampLineHeights,
+      fallback: _stampWidthFraction,
     );
   }
 
@@ -207,7 +242,7 @@ class _WorkScreenState extends State<WorkScreen> {
       pageIndex: pageIndex,
       nx: nx,
       ny: ny,
-      widthFraction: _noteWidthFraction,
+      widthFraction: _noteWidthFractionFor(pageIndex),
       text: text,
     ));
   }
@@ -218,7 +253,8 @@ class _WorkScreenState extends State<WorkScreen> {
     required List<int> pages,
     required double nx,
     required double ny,
-    required double widthFraction,
+    required double lineHeights,
+    required double fallback,
   }) async {
     final image = await decodeImageFromList(bytes);
     final aspect = image.width / image.height;
@@ -229,7 +265,12 @@ class _WorkScreenState extends State<WorkScreen> {
         pageIndex: page,
         nx: nx,
         ny: ny,
-        widthFraction: widthFraction,
+        widthFraction: _imageWidthFraction(
+          pageIndex: page,
+          aspect: aspect,
+          lineHeights: lineHeights,
+          fallback: fallback,
+        ),
         aspectRatio: aspect,
         imageBytes: bytes,
       ));

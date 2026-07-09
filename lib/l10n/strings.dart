@@ -44,6 +44,7 @@ class S {
       'withStamp': 'עם חותמת',
       'allPages': 'כל העמודים',
       'nothingToExport': 'עוד לא הונחה חתימה במסמך',
+      'cropHint': 'מסמנים את אזור החותמת — גוררים את הפינות',
     },
     'en': {
       'appTitle': 'QuickSign',
@@ -81,6 +82,7 @@ class S {
       'withStamp': 'With stamp',
       'allPages': 'All pages',
       'nothingToExport': 'No signature placed yet',
+      'cropHint': 'Mark the stamp area — drag the corners',
     },
   };
 

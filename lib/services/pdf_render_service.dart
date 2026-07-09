@@ -22,9 +22,16 @@ class PdfRenderService {
   final Map<int, Future<Uint8List>> _cache = {};
 
   /// Render scale relative to the page's point size. 2x ≈ 144dpi — crisp on
-  /// phones without huge bitmaps.
+  /// phones without huge bitmaps. Long documents render lighter because every
+  /// page image stays in memory while the document is open.
   static const double renderScale = 2.0;
+  static const double lightRenderScale = 1.4;
+  static const int lightModePageThreshold = 12;
   static const double maxRenderWidth = 2048;
+
+  double get _effectiveScale => _pageSizes.length > lightModePageThreshold
+      ? lightRenderScale
+      : renderScale;
 
   Future<PdfDocumentInfo> open(String path) async {
     await close();
@@ -52,7 +59,7 @@ class PdfRenderService {
     }
     final size = _pageSizes[pageIndex];
     final width =
-        (size.width * renderScale).clamp(1.0, maxRenderWidth).toDouble();
+        (size.width * _effectiveScale).clamp(1.0, maxRenderWidth).toDouble();
     final height = width * size.height / size.width;
     final page = await doc.getPage(pageIndex + 1);
     try {

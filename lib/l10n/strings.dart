@@ -36,6 +36,14 @@ class S {
       'emptySignature': 'קודם מציירים חתימה',
       'newDocument': 'מסמך חדש',
       'stampHint': 'מצלמים חותמת על דף לבן — הרקע יוסר אוטומטית',
+      'permanentTitle': 'הטמעה לצמיתות',
+      'permanentBody':
+          'החתימות, החותמות וההערות יוטמעו לצמיתות במסמך.\nלא ניתן יהיה לשנות או למחוק אותן לאחר מכן.',
+      'continue': 'המשך',
+      'cancel': 'ביטול',
+      'withStamp': 'עם חותמת',
+      'allPages': 'כל העמודים',
+      'nothingToExport': 'עוד לא הונחה חתימה במסמך',
     },
     'en': {
       'appTitle': 'QuickSign',
@@ -65,6 +73,14 @@ class S {
       'emptySignature': 'Draw a signature first',
       'newDocument': 'New document',
       'stampHint': 'Photograph the stamp on white paper — the background is removed automatically',
+      'permanentTitle': 'Permanent embedding',
+      'permanentBody':
+          'Signatures, stamps and notes will be permanently embedded in the document.\nThey cannot be changed or removed afterwards.',
+      'continue': 'Continue',
+      'cancel': 'Cancel',
+      'withStamp': 'With stamp',
+      'allPages': 'All pages',
+      'nothingToExport': 'No signature placed yet',
     },
   };
 

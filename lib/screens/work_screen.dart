@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -18,7 +19,8 @@ import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
 import 'stamp_setup_screen.dart';
 
-/// The single work screen: document pages, placement overlays, bottom toolbar.
+/// The single work screen: zoomable document pages, placement overlays,
+/// bottom toolbar with the ad banner underneath.
 class WorkScreen extends StatefulWidget {
   const WorkScreen({super.key});
 
@@ -30,13 +32,19 @@ class _WorkScreenState extends State<WorkScreen> {
   static const double _pagePadding = 12;
   static const double _pageGap = 10;
 
+  /// Default placed sizes relative to the page width — proportional to
+  /// typical document text (a signature ≈ 4cm on an A4 page).
+  static const double _signatureWidthFraction = 0.22;
+  static const double _stampWidthFraction = 0.2;
+  static const double _noteWidthFraction = 0.5;
+
   final PdfRenderService _renderService = PdfRenderService();
   late final ImportService _importService = ImportService(_renderService);
   final ExportService _exportService = ExportService();
   final StampService _stampService = StampService();
   final ShareService _shareService = ShareService();
 
-  final ScrollController _scrollController = ScrollController();
+  final TransformationController _transformation = TransformationController();
 
   DocumentSession? _session;
   ToolbarTool _armedTool = ToolbarTool.signature;
@@ -60,7 +68,7 @@ class _WorkScreenState extends State<WorkScreen> {
   @override
   void dispose() {
     _shareSub?.cancel();
-    _scrollController.dispose();
+    _transformation.dispose();
     _session?.dispose();
     _renderService.close();
     super.dispose();
@@ -88,7 +96,7 @@ class _WorkScreenState extends State<WorkScreen> {
         _armedTool = ToolbarTool.signature;
         _busy = false;
       });
-      if (_scrollController.hasClients) _scrollController.jumpTo(0);
+      _transformation.value = Matrix4.identity();
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -96,9 +104,8 @@ class _WorkScreenState extends State<WorkScreen> {
     }
   }
 
-  // ── Page geometry ─────────────────────────────────────────────────────────
+  // ── Page geometry (document coordinates) ──────────────────────────────────
 
-  /// On-screen heights of each page for [contentWidth].
   List<double> _pageHeights(double contentWidth) {
     final session = _session!;
     return [
@@ -107,14 +114,14 @@ class _WorkScreenState extends State<WorkScreen> {
     ];
   }
 
-  /// The on-screen rect of [pageIndex] in viewport coordinates, given the
-  /// current scroll offset.
-  Rect _pageRect(int pageIndex, double contentWidth, List<double> heights) {
-    var top = _pagePadding - _scrollController.offset;
-    for (var i = 0; i < pageIndex; i++) {
-      top += heights[i] + _pageGap;
+  List<double> _pageTops(List<double> heights) {
+    final tops = <double>[];
+    var y = _pagePadding;
+    for (final h in heights) {
+      tops.add(y);
+      y += h + _pageGap;
     }
-    return Rect.fromLTWH(_pagePadding, top, contentWidth, heights[pageIndex]);
+    return tops;
   }
 
   // ── Placement ─────────────────────────────────────────────────────────────
@@ -137,6 +144,7 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Future<void> _placeSignature(int pageIndex, double nx, double ny) async {
+    final session = _session!;
     final savedSignature = await _stampService.getSignatureBytes();
     final savedStamp = await _stampService.getStampBytes();
     if (!mounted) return;
@@ -144,18 +152,31 @@ class _WorkScreenState extends State<WorkScreen> {
       context,
       savedSignature: savedSignature,
       savedStamp: savedStamp,
+      showAllPagesOption: session.pageCount > 1,
     );
     if (result == null) return;
+
     if (result.isNewDrawing) {
-      // Remember the latest drawn signature for the one-tap shortcut.
+      // Remember the raw drawing (without the stamp) for the one-tap shortcut.
       unawaited(_stampService.saveSignature(result.bytes));
     }
+    var bytes = result.bytes;
+    if (result.withStamp && savedStamp != null) {
+      bytes =
+          await StampService.compositeSignatureOverStamp(bytes, savedStamp);
+    }
+    final pages = result.allPages
+        ? List.generate(session.pageCount, (i) => i)
+        : [pageIndex];
     await _addImagePlacement(
       type: PlacementType.signature,
-      bytes: result.bytes,
-      pageIndex: pageIndex,
+      bytes: bytes,
+      pages: pages,
       nx: nx,
       ny: ny,
+      widthFraction: result.withStamp
+          ? _stampWidthFraction * 1.2
+          : _signatureWidthFraction,
     );
   }
 
@@ -171,9 +192,10 @@ class _WorkScreenState extends State<WorkScreen> {
     await _addImagePlacement(
       type: PlacementType.stamp,
       bytes: bytes,
-      pageIndex: pageIndex,
+      pages: [pageIndex],
       nx: nx,
       ny: ny,
+      widthFraction: _stampWidthFraction,
     );
   }
 
@@ -185,7 +207,7 @@ class _WorkScreenState extends State<WorkScreen> {
       pageIndex: pageIndex,
       nx: nx,
       ny: ny,
-      widthFraction: 0.5,
+      widthFraction: _noteWidthFraction,
       text: text,
     ));
   }
@@ -193,22 +215,25 @@ class _WorkScreenState extends State<WorkScreen> {
   Future<void> _addImagePlacement({
     required PlacementType type,
     required Uint8List bytes,
-    required int pageIndex,
+    required List<int> pages,
     required double nx,
     required double ny,
+    required double widthFraction,
   }) async {
     final image = await decodeImageFromList(bytes);
     final aspect = image.width / image.height;
     image.dispose();
-    _session?.addPlacement(Placement(
-      type: type,
-      pageIndex: pageIndex,
-      nx: nx,
-      ny: ny,
-      widthFraction: 0.3,
-      aspectRatio: aspect,
-      imageBytes: bytes,
-    ));
+    for (final page in pages) {
+      _session?.addPlacement(Placement(
+        type: type,
+        pageIndex: page,
+        nx: nx,
+        ny: ny,
+        widthFraction: widthFraction,
+        aspectRatio: aspect,
+        imageBytes: bytes,
+      ));
+    }
   }
 
   void _onToolSelected(ToolbarTool tool) {
@@ -218,14 +243,46 @@ class _WorkScreenState extends State<WorkScreen> {
 
   // ── Export ────────────────────────────────────────────────────────────────
 
+  Future<bool> _confirmPermanentEmbedding() async {
+    final s = S.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.lock_outline, size: 32),
+        title: Text(s['permanentTitle']),
+        content: Text(
+          s['permanentBody'],
+          style: const TextStyle(fontSize: 16, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(s['cancel']),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(s['continue']),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   Future<void> _send() async {
     final session = _session;
     if (session == null || _busy) return;
+    if (session.placements.value.isEmpty) {
+      _snack(S.of(context)['nothingToExport']);
+      return;
+    }
+    if (!await _confirmPermanentEmbedding()) return;
+
     setState(() => _busy = true);
     try {
       final signedPath = await _exportService.exportSigned(
-        pdfPath: session.pdfPath,
-        placements: session.placements.value,
+        session: session,
+        renderService: _renderService,
       );
       if (!mounted) return;
       setState(() => _busy = false);
@@ -287,8 +344,9 @@ class _WorkScreenState extends State<WorkScreen> {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final session = _session;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      backgroundColor: scheme.surfaceContainerHighest,
       appBar: AppBar(
         title: Text(s['appTitle']),
         actions: [
@@ -306,12 +364,24 @@ class _WorkScreenState extends State<WorkScreen> {
           Expanded(
             child: session == null ? _buildEmptyState(s) : _buildDocument(),
           ),
-          const AdBanner(),
-          BottomToolbar(
-            armedTool: _armedTool,
-            enabled: session != null && !_busy,
-            onToolSelected: _onToolSelected,
-            onSend: _send,
+          Material(
+            color: scheme.surfaceContainer,
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  BottomToolbar(
+                    armedTool: _armedTool,
+                    enabled: session != null && !_busy,
+                    onToolSelected: _onToolSelected,
+                    onSend: _send,
+                  ),
+                  // Ads pinned at the very bottom, below the toolbar.
+                  const AdBanner(),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -354,58 +424,69 @@ class _WorkScreenState extends State<WorkScreen> {
     final session = _session!;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final contentWidth = constraints.maxWidth - 2 * _pagePadding;
+        final viewportWidth = constraints.maxWidth;
+        final contentWidth = viewportWidth - 2 * _pagePadding;
         final heights = _pageHeights(contentWidth);
+        final tops = _pageTops(heights);
+        final docHeight = tops.last + heights.last + _pagePadding;
+
         return Stack(
           children: [
-            ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(
-                horizontal: _pagePadding,
-                vertical: _pagePadding,
-              ),
-              itemCount: session.pageCount,
-              itemBuilder: (context, index) {
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == session.pageCount - 1 ? 0 : _pageGap,
-                  ),
-                  child: _PageItem(
-                    renderService: _renderService,
-                    pageIndex: index,
-                    width: contentWidth,
-                    height: heights[index],
-                    onTapUp: (local, size) =>
-                        _handlePageTap(index, local, size),
-                  ),
-                );
-              },
-            ),
-            // Overlays live above the list so their gestures never fight the
-            // scroll view; positions are re-resolved on every scroll tick.
+            // One zoomable surface holding pages AND overlays, so they share
+            // a coordinate space at every zoom level (comfortable reading +
+            // consistent placement).
             Positioned.fill(
-              child: AnimatedBuilder(
-                animation: Listenable.merge(
-                    [_scrollController, session.placements]),
-                builder: (context, _) {
-                  if (!_scrollController.hasClients) {
-                    return const SizedBox.shrink();
-                  }
-                  return Stack(
-                    clipBehavior: Clip.hardEdge,
+              child: InteractiveViewer(
+                transformationController: _transformation,
+                constrained: false,
+                minScale: 1,
+                maxScale: 6,
+                child: SizedBox(
+                  width: viewportWidth,
+                  height: math.max(docHeight, constraints.maxHeight),
+                  child: Stack(
                     children: [
-                      for (final placement in session.placements.value)
-                        PlacementOverlay(
-                          key: ObjectKey(placement),
-                          placement: placement,
-                          pageRect: _pageRect(
-                              placement.pageIndex, contentWidth, heights),
-                          onChanged: session.touch,
-                          onDelete: () => session.removePlacement(placement),
+                      for (var i = 0; i < session.pageCount; i++)
+                        Positioned(
+                          left: _pagePadding,
+                          top: tops[i],
+                          width: contentWidth,
+                          height: heights[i],
+                          child: _PageItem(
+                            renderService: _renderService,
+                            pageIndex: i,
+                            width: contentWidth,
+                            height: heights[i],
+                            onTapUp: (local, size) =>
+                                _handlePageTap(i, local, size),
+                          ),
                         ),
+                      ValueListenableBuilder<List<Placement>>(
+                        valueListenable: session.placements,
+                        builder: (context, placements, _) => Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            for (final placement in placements)
+                              PlacementOverlay(
+                                key: ObjectKey(placement),
+                                placement: placement,
+                                pageRect: Rect.fromLTWH(
+                                  _pagePadding,
+                                  tops[placement.pageIndex],
+                                  contentWidth,
+                                  heights[placement.pageIndex],
+                                ),
+                                transformation: _transformation,
+                                onChanged: session.touch,
+                                onDelete: () =>
+                                    session.removePlacement(placement),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
-                  );
-                },
+                  ),
+                ),
               ),
             ),
             if (_busy)
@@ -440,42 +521,39 @@ class _PageItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: GestureDetector(
-        onTapUp: (details) =>
-            onTapUp(details.localPosition, Size(width, height)),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x22000000),
-                blurRadius: 6,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: FutureBuilder<Uint8List>(
-            future: renderService.renderPage(pageIndex),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
-                );
-              }
-              return Image.memory(
-                snapshot.data!,
-                fit: BoxFit.fill,
-                gaplessPlayback: true,
+    return GestureDetector(
+      onTapUp: (details) =>
+          onTapUp(details.localPosition, Size(width, height)),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: FutureBuilder<Uint8List>(
+          future: renderService.renderPage(pageIndex),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
               );
-            },
-          ),
+            }
+            return Image.memory(
+              snapshot.data!,
+              fit: BoxFit.fill,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+            );
+          },
         ),
       ),
     );

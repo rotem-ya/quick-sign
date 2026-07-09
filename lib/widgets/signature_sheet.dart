@@ -5,21 +5,34 @@ import 'package:signature/signature.dart';
 
 import '../l10n/strings.dart';
 
-/// What the signature sheet produced: freshly drawn ink (worth saving as the
-/// reusable signature) or a stored image picked from the shortcuts.
+/// What the signature sheet produced.
 class SignatureSheetResult {
-  SignatureSheetResult({required this.bytes, required this.isNewDrawing});
+  SignatureSheetResult({
+    required this.bytes,
+    required this.isNewDrawing,
+    required this.withStamp,
+    required this.allPages,
+  });
 
   final Uint8List bytes;
+
+  /// True when freshly drawn (worth remembering as the reusable signature).
   final bool isNewDrawing;
+
+  /// Place the signature on top of the saved stamp as one combined item.
+  final bool withStamp;
+
+  /// Replicate the placement on every page of the document.
+  final bool allPages;
 }
 
-/// Bottom sheet with a drawing canvas. Shows one-tap shortcuts for the saved
-/// signature / stamp when they exist.
+/// Bottom sheet with a drawing canvas, one-tap shortcuts for the saved
+/// signature / stamp, and toggles for stamp-combo and all-pages placement.
 Future<SignatureSheetResult?> showSignatureSheet(
   BuildContext context, {
   Uint8List? savedSignature,
   Uint8List? savedStamp,
+  bool showAllPagesOption = false,
 }) {
   return showModalBottomSheet<SignatureSheetResult>(
     context: context,
@@ -28,15 +41,21 @@ Future<SignatureSheetResult?> showSignatureSheet(
     builder: (context) => _SignatureSheet(
       savedSignature: savedSignature,
       savedStamp: savedStamp,
+      showAllPagesOption: showAllPagesOption,
     ),
   );
 }
 
 class _SignatureSheet extends StatefulWidget {
-  const _SignatureSheet({this.savedSignature, this.savedStamp});
+  const _SignatureSheet({
+    this.savedSignature,
+    this.savedStamp,
+    required this.showAllPagesOption,
+  });
 
   final Uint8List? savedSignature;
   final Uint8List? savedStamp;
+  final bool showAllPagesOption;
 
   @override
   State<_SignatureSheet> createState() => _SignatureSheetState();
@@ -49,10 +68,22 @@ class _SignatureSheetState extends State<_SignatureSheet> {
     exportBackgroundColor: Colors.transparent,
   );
 
+  bool _withStamp = false;
+  bool _allPages = false;
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _pop(Uint8List bytes, {required bool isNewDrawing}) {
+    Navigator.of(context).pop(SignatureSheetResult(
+      bytes: bytes,
+      isNewDrawing: isNewDrawing,
+      withStamp: _withStamp && widget.savedStamp != null,
+      allPages: _allPages,
+    ));
   }
 
   Future<void> _confirm() async {
@@ -65,13 +96,7 @@ class _SignatureSheetState extends State<_SignatureSheet> {
     }
     final bytes = await _controller.toPngBytes();
     if (bytes == null || !mounted) return;
-    Navigator.of(context)
-        .pop(SignatureSheetResult(bytes: bytes, isNewDrawing: true));
-  }
-
-  void _useSaved(Uint8List bytes) {
-    Navigator.of(context)
-        .pop(SignatureSheetResult(bytes: bytes, isNewDrawing: false));
+    _pop(bytes, isNewDrawing: true);
   }
 
   @override
@@ -87,25 +112,35 @@ class _SignatureSheetState extends State<_SignatureSheet> {
           if (widget.savedSignature != null || widget.savedStamp != null) ...[
             Wrap(
               spacing: 8,
+              runSpacing: 4,
               children: [
                 if (widget.savedSignature != null)
                   ActionChip(
                     avatar: const Icon(Icons.draw, size: 20),
                     label: Text(s['savedSignature']),
-                    onPressed: () => _useSaved(widget.savedSignature!),
+                    onPressed: () =>
+                        _pop(widget.savedSignature!, isNewDrawing: false),
                   ),
                 if (widget.savedStamp != null)
                   ActionChip(
                     avatar: const Icon(Icons.approval, size: 20),
                     label: Text(s['myStamp']),
-                    onPressed: () => _useSaved(widget.savedStamp!),
+                    onPressed: () {
+                      // The stamp itself — the combo toggle is irrelevant.
+                      Navigator.of(context).pop(SignatureSheetResult(
+                        bytes: widget.savedStamp!,
+                        isNewDrawing: false,
+                        withStamp: false,
+                        allPages: _allPages,
+                      ));
+                    },
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
           ],
           Container(
-            height: 220,
+            height: 200,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
@@ -117,7 +152,31 @@ class _SignatureSheetState extends State<_SignatureSheet> {
               backgroundColor: Colors.white,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            children: [
+              if (widget.savedStamp != null)
+                FilterChip(
+                  avatar: _withStamp
+                      ? null
+                      : const Icon(Icons.approval_outlined, size: 20),
+                  label: Text(s['withStamp']),
+                  selected: _withStamp,
+                  onSelected: (v) => setState(() => _withStamp = v),
+                ),
+              if (widget.showAllPagesOption)
+                FilterChip(
+                  avatar: _allPages
+                      ? null
+                      : const Icon(Icons.copy_all_outlined, size: 20),
+                  label: Text(s['allPages']),
+                  selected: _allPages,
+                  onSelected: (v) => setState(() => _allPages = v),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(

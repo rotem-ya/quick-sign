@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -62,6 +63,55 @@ class StampService {
       result = img.copyCrop(rgba, x: x, y: y, width: w, height: h);
     }
     return Uint8List.fromList(img.encodePng(result));
+  }
+
+  /// Draws the signature centered on top of the stamp (ink over stamp, like
+  /// signing across a physical stamp) and returns one combined PNG.
+  static Future<Uint8List> compositeSignatureOverStamp(
+    Uint8List signaturePng,
+    Uint8List stampPng,
+  ) async {
+    final stamp = await _decodeUiImage(stampPng);
+    final signature = await _decodeUiImage(signaturePng);
+
+    final w = stamp.width.toDouble();
+    final h = stamp.height.toDouble();
+    // Fit the signature inside the stamp bounds, slightly inset.
+    final fit = 0.92 *
+        (w / signature.width < h / signature.height
+            ? w / signature.width
+            : h / signature.height);
+    final sw = signature.width * fit;
+    final sh = signature.height * fit;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    final paint = ui.Paint()..filterQuality = ui.FilterQuality.high;
+    canvas.drawImage(stamp, ui.Offset.zero, paint);
+    canvas.drawImageRect(
+      signature,
+      ui.Rect.fromLTWH(
+          0, 0, signature.width.toDouble(), signature.height.toDouble()),
+      ui.Rect.fromCenter(
+          center: ui.Offset(w / 2, h / 2), width: sw, height: sh),
+      paint,
+    );
+
+    final picture = recorder.endRecording();
+    final combined = await picture.toImage(stamp.width, stamp.height);
+    stamp.dispose();
+    signature.dispose();
+    picture.dispose();
+    final data = await combined.toByteData(format: ui.ImageByteFormat.png);
+    combined.dispose();
+    return data!.buffer.asUint8List();
+  }
+
+  static Future<ui.Image> _decodeUiImage(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    codec.dispose();
+    return frame.image;
   }
 
   Future<String> saveStamp(Uint8List pngBytes) =>

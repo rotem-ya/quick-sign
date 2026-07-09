@@ -24,14 +24,10 @@ class BottomToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 76,
-          child: Row(
-            children: [
+    return SizedBox(
+      height: 76,
+      child: Row(
+        children: [
               _ToolButton(
                 icon: Icons.draw_outlined,
                 selectedIcon: Icons.draw,
@@ -66,8 +62,6 @@ class BottomToolbar extends StatelessWidget {
                 onPressed: onSend,
               ),
             ],
-          ),
-        ),
       ),
     );
   }

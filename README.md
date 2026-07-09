@@ -21,14 +21,51 @@
 ### היקף ה-MVP
 
 - תמיכה ב-**PDF ובתמונות בלבד**.
-- הכול מקומי, ללא שרת, ללא הרשמה.
+- הכול מקומי, ללא שרת, ללא הרשמה — המסמך אף פעם לא עוזב את המכשיר.
+- UI מבוסס אייקונים עם מעט טקסט, בעברית ובאנגלית (RTL אוטומטי לפי שפת המכשיר).
+- באנר פרסומות (AdMob) — כרגע עם מזהי **בדיקה**.
 
 ## סטטוס
 
-**MVP בבנייה** 🚧
+**MVP מוכן לבדיקות במכשיר** ✅
+
+כל שלבי האיפיון ממומשים: ייבוא (Share + בחירה ידנית), עטיפת תמונה כ-PDF,
+הנחת חתימה עם גרירה והגדלה, ייצוא משוטח ושיתוף, חותמת עם הסרת רקע, והערות
+בעברית (גופן Heebo מוטמע ב-PDF).
+
+## מבנה הקוד
+
+```
+lib/
+├── main.dart / app.dart           # אתחול, theme, לוקליזציה (he/en)
+├── l10n/strings.dart              # טבלת מחרוזות מינימלית
+├── models/                        # Placement (קואורדינטות מנורמלות 0..1), DocumentSession
+├── services/                      # import / render (pdfx) / export (syncfusion) / stamp / share
+├── screens/                       # work_screen (המסך היחיד), stamp_setup_screen
+└── widgets/                       # signature_sheet, placement_overlay, bottom_toolbar, note_sheet, ad_banner
+```
 
 ## הרצה
 
 ```bash
+flutter pub get
 flutter run
 ```
+
+בדיקות וניתוח סטטי:
+
+```bash
+flutter analyze
+flutter test
+```
+
+## לפני שחרור — TODO ידני
+
+- **iOS Share Extension:** קבלת קבצים ב-Share על iOS דורשת הוספת
+  Share Extension target + App Group ב-Xcode לפי ה-README של
+  [`receive_sharing_intent`](https://pub.dev/packages/receive_sharing_intent).
+  ב-Android זה עובד כבר עכשיו דרך ה-intent-filters במניפסט.
+- **AdMob:** להחליף את מזהי הבדיקה במזהים אמיתיים —
+  `AndroidManifest.xml` (APPLICATION_ID), `Info.plist` (GADApplicationIdentifier),
+  ו-`lib/widgets/ad_banner.dart` (ad unit IDs).
+- **Application ID:** לשנות `com.example.quick_sign` למזהה אמיתי.

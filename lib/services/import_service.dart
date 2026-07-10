@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -27,12 +28,33 @@ class ImportService {
     'png',
   ];
 
+  /// Channel for ACTION_VIEW intents ("Open with…"), handled natively in
+  /// MainActivity. Share-sheet intents come through receive_sharing_intent.
+  static const MethodChannel _viewChannel =
+      MethodChannel('quick_sign/view_intent');
+
   /// The file shared into the app while it was closed, if any.
   /// Must be called once at startup; resets the native intent afterwards.
   Future<String?> getInitialSharedFile() async {
     final files = await ReceiveSharingIntent.instance.getInitialMedia();
     ReceiveSharingIntent.instance.reset();
-    return _firstSupportedPath(files);
+    final shared = _firstSupportedPath(files);
+    if (shared != null) return shared;
+    try {
+      return await _viewChannel.invokeMethod<String>('getInitialViewFile');
+    } catch (_) {
+      return null; // iOS / tests: channel not implemented.
+    }
+  }
+
+  /// Registers a callback for files opened via "Open with…" while the app is
+  /// already running.
+  void setViewFileListener(void Function(String path) onFile) {
+    _viewChannel.setMethodCallHandler((call) async {
+      if (call.method == 'viewFile' && call.arguments is String) {
+        onFile(call.arguments as String);
+      }
+    });
   }
 
   /// Files shared into the app while it is running.

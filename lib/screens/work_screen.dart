@@ -65,6 +65,7 @@ class _WorkScreenState extends State<WorkScreen> {
 
   Future<void> _initSharing() async {
     _shareSub = _importService.sharedFileStream().listen(_openPath);
+    _importService.setViewFileListener(_openPath);
     final initial = await _importService.getInitialSharedFile();
     if (initial != null) {
       await _openPath(initial);

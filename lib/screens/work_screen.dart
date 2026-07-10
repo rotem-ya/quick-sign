@@ -64,11 +64,11 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Future<void> _initSharing() async {
-    _shareSub = _importService.sharedFileStream().listen(_openPath);
-    _importService.setViewFileListener(_openPath);
+    _shareSub = _importService.sharedFileStream().listen(_openSharedPath);
+    _importService.setViewFileListener(_openSharedPath);
     final initial = await _importService.getInitialSharedFile();
     if (initial != null) {
-      await _openPath(initial);
+      await _openSharedPath(initial);
     }
   }
 
@@ -83,20 +83,26 @@ class _WorkScreenState extends State<WorkScreen> {
 
   // ── Import ────────────────────────────────────────────────────────────────
 
-  Future<void> _pickAndOpen() async {
-    final path = await _importService.pickFile();
-    if (path != null) await _openPath(path);
-  }
+  Future<void> _pickAndOpen() =>
+      _openWith(() => _importService.pickAndOpen());
 
-  Future<void> _openPath(String path) async {
+  Future<void> _openSharedPath(String path) async {
     if (!ImportService.isSupported(path)) {
       _snack(S.of(context)['importError']);
       return;
     }
+    await _openWith(() => _importService.openPath(path));
+  }
+
+  Future<void> _openWith(Future<DocumentSession?> Function() open) async {
     setState(() => _busy = true);
     try {
-      final session = await _importService.openDocument(path);
+      final session = await open();
       if (!mounted) return;
+      if (session == null) {
+        setState(() => _busy = false);
+        return; // user cancelled the picker
+      }
       _session?.dispose();
       setState(() {
         _session = session;
@@ -283,6 +289,23 @@ class _WorkScreenState extends State<WorkScreen> {
     _snack(S.of(context)['tapToPlace']);
   }
 
+  void _deletePlacement(Placement placement) {
+    final session = _session;
+    if (session == null) return;
+    session.removePlacement(placement);
+    final s = S.of(context);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: s['undo'],
+          onPressed: () => session.addPlacement(placement),
+        ),
+      ));
+  }
+
   // ── Export ────────────────────────────────────────────────────────────────
 
   Future<bool> _confirmPermanentEmbedding() async {
@@ -322,13 +345,13 @@ class _WorkScreenState extends State<WorkScreen> {
 
     setState(() => _busy = true);
     try {
-      final signedPath = await _exportService.exportSigned(
+      final signedBytes = await _exportService.exportSigned(
         session: session,
         renderService: _renderService,
       );
       if (!mounted) return;
       setState(() => _busy = false);
-      await _showSendSheet(signedPath);
+      await _showSendSheet(signedBytes, session.signedFileName);
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -336,7 +359,7 @@ class _WorkScreenState extends State<WorkScreen> {
     }
   }
 
-  Future<void> _showSendSheet(String signedPath) async {
+  Future<void> _showSendSheet(Uint8List signedBytes, String fileName) async {
     final s = S.of(context);
     await showModalBottomSheet<void>(
       context: context,
@@ -345,23 +368,35 @@ class _WorkScreenState extends State<WorkScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (ShareService.canShare)
+              ListTile(
+                leading: const Icon(Icons.share, size: 28),
+                title: Text(s['share'], style: const TextStyle(fontSize: 18)),
+                minTileHeight: 56,
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  await _shareService.shareBytes(signedBytes, fileName);
+                },
+              ),
+            // System save dialog — Drive / OneDrive / shared folders /
+            // device storage. On the web this becomes a browser download.
             ListTile(
-              leading: const Icon(Icons.share, size: 28),
-              title: Text(s['share'], style: const TextStyle(fontSize: 18)),
+              leading: Icon(
+                ShareService.canShare
+                    ? Icons.drive_folder_upload_outlined
+                    : Icons.download,
+                size: 28,
+              ),
+              title: Text(
+                ShareService.canShare ? s['saveTo'] : s['download'],
+                style: const TextStyle(fontSize: 18),
+              ),
               minTileHeight: 56,
               onTap: () async {
                 Navigator.of(sheetContext).pop();
-                await _shareService.shareFile(signedPath);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.save_alt, size: 28),
-              title: Text(s['saveCopy'], style: const TextStyle(fontSize: 18)),
-              minTileHeight: 56,
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await _shareService.saveCopy(signedPath);
-                _snack(s['copySaved']);
+                final saved =
+                    await _shareService.saveAs(signedBytes, fileName);
+                if (saved) _snack(s['copySaved']);
               },
             ),
           ],
@@ -445,18 +480,22 @@ class _WorkScreenState extends State<WorkScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
             ),
           ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.ios_share, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(
-                s['shareHint'],
-                style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
-              ),
-            ],
-          ),
+          if (ShareService.canShare) ...[
+            const SizedBox(height: 20),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.ios_share,
+                    size: 18, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(
+                  s['shareHint'],
+                  style:
+                      TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -520,8 +559,7 @@ class _WorkScreenState extends State<WorkScreen> {
                                 ),
                                 transformation: _transformation,
                                 onChanged: session.touch,
-                                onDelete: () =>
-                                    session.removePlacement(placement),
+                                onDelete: () => _deletePlacement(placement),
                               ),
                           ],
                         ),

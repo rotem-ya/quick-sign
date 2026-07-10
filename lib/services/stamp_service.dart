@@ -1,10 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Parameters for [StampService.cropAndClean] — sendable to a compute isolate.
@@ -25,9 +26,18 @@ class StampCropRequest {
 
 /// Captures, processes and stores the user's stamp — plus the last drawn
 /// signature — so both can be placed with a single tap.
+///
+/// Stored as base64 in shared preferences: works identically on mobile and
+/// web, and on Android it rides the OS auto-backup, so the stamp and
+/// signature survive app reinstalls through the user's own Google backup —
+/// no accounts, no servers.
 class StampService {
-  static const _stampPathKey = 'stamp_path';
-  static const _signaturePathKey = 'signature_path';
+  static const _stampKey = 'stamp_png_b64';
+  static const _signatureKey = 'signature_png_b64';
+
+  // Pre-web versions stored file paths; migrated lazily on first read.
+  static const _legacyStampPathKey = 'stamp_path';
+  static const _legacySignaturePathKey = 'signature_path';
 
   /// White-background removal threshold: pixels with r,g,b all above this
   /// become fully transparent.
@@ -150,33 +160,48 @@ class StampService {
     return frame.image;
   }
 
-  Future<String> saveStamp(Uint8List pngBytes) =>
-      _savePng(pngBytes, 'stamp.png', _stampPathKey);
+  Future<void> saveStamp(Uint8List pngBytes) => _savePng(pngBytes, _stampKey);
 
-  Future<String> saveSignature(Uint8List pngBytes) =>
-      _savePng(pngBytes, 'saved_signature.png', _signaturePathKey);
+  Future<void> saveSignature(Uint8List pngBytes) =>
+      _savePng(pngBytes, _signatureKey);
 
-  Future<Uint8List?> getStampBytes() => _readPng(_stampPathKey);
+  Future<Uint8List?> getStampBytes() =>
+      _readPng(_stampKey, legacyPathKey: _legacyStampPathKey);
 
-  Future<Uint8List?> getSignatureBytes() => _readPng(_signaturePathKey);
+  Future<Uint8List?> getSignatureBytes() =>
+      _readPng(_signatureKey, legacyPathKey: _legacySignaturePathKey);
 
   Future<bool> hasStamp() async => await getStampBytes() != null;
 
-  Future<String> _savePng(Uint8List bytes, String name, String prefKey) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/$name');
-    await file.writeAsBytes(bytes, flush: true);
+  Future<void> _savePng(Uint8List bytes, String prefKey) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(prefKey, file.path);
-    return file.path;
+    await prefs.setString(prefKey, base64Encode(bytes));
   }
 
-  Future<Uint8List?> _readPng(String prefKey) async {
+  Future<Uint8List?> _readPng(String prefKey,
+      {required String legacyPathKey}) async {
     final prefs = await SharedPreferences.getInstance();
-    final path = prefs.getString(prefKey);
-    if (path == null) return null;
-    final file = File(path);
-    if (!await file.exists()) return null;
-    return file.readAsBytes();
+    final encoded = prefs.getString(prefKey);
+    if (encoded != null) {
+      try {
+        return base64Decode(encoded);
+      } catch (_) {
+        return null;
+      }
+    }
+    // One-time migration from the old file-based storage (mobile only).
+    if (kIsWeb) return null;
+    final legacyPath = prefs.getString(legacyPathKey);
+    if (legacyPath == null) return null;
+    try {
+      final file = File(legacyPath);
+      if (!await file.exists()) return null;
+      final bytes = await file.readAsBytes();
+      await prefs.setString(prefKey, base64Encode(bytes));
+      await prefs.remove(legacyPathKey);
+      return bytes;
+    } catch (_) {
+      return null;
+    }
   }
 }

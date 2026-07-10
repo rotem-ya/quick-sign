@@ -12,7 +12,8 @@ class PdfDocumentInfo {
   final List<Size> pageSizes;
 }
 
-/// Renders PDF pages to images for on-screen display (pdfx).
+/// Renders PDF pages to images for on-screen display (pdfx — pdfium on
+/// mobile/desktop, pdf.js on the web).
 ///
 /// Pages are rendered on demand and cached, so long documents don't blow up
 /// memory at open time.
@@ -33,9 +34,9 @@ class PdfRenderService {
       ? lightRenderScale
       : renderScale;
 
-  Future<PdfDocumentInfo> open(String path) async {
+  Future<PdfDocumentInfo> open(Uint8List pdfBytes) async {
     await close();
-    final doc = await PdfDocument.openFile(path);
+    final doc = await PdfDocument.openData(pdfBytes);
     _document = doc;
     final sizes = <Size>[];
     for (var i = 1; i <= doc.pagesCount; i++) {

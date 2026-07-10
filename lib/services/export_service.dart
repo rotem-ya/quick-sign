@@ -1,10 +1,8 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:image/image.dart' as img;
-import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../models/document_session.dart';
@@ -28,8 +26,8 @@ class ExportService {
   static const String noteFontFamily = 'Heebo';
   static const int jpegQuality = 88;
 
-  /// Renders, flattens and writes the signed copy; returns its path.
-  Future<String> exportSigned({
+  /// Renders and flattens the signed document; returns the PDF bytes.
+  Future<Uint8List> exportSigned({
     required DocumentSession session,
     required PdfRenderService renderService,
   }) async {
@@ -48,17 +46,10 @@ class ExportService {
       pageJpegs.add(await compute(_pngToJpeg, flatPng));
     }
 
-    final pdfBytes = assembleRasterPdf(
+    return Uint8List.fromList(assembleRasterPdf(
       pageJpegs: pageJpegs,
       pageSizes: session.pageSizes,
-    );
-
-    final dir = await getTemporaryDirectory();
-    final out = File(
-      '${dir.path}/signed_${DateTime.now().millisecondsSinceEpoch}.pdf',
-    );
-    await out.writeAsBytes(pdfBytes, flush: true);
-    return out.path;
+    ));
   }
 
   /// Paints [placements] onto the rendered page image. Returns PNG bytes.

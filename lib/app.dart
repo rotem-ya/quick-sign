@@ -21,9 +21,24 @@ class QuickSignApp extends StatelessWidget {
       ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1A5CB0)),
+        // Heebo covers Hebrew + Latin — one typographic voice everywhere,
+        // matching the font embedded in exported documents.
+        fontFamily: 'Heebo',
         visualDensity: VisualDensity.comfortable,
         // Accessibility: generous touch targets everywhere.
         materialTapTargetSize: MaterialTapTargetSize.padded,
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            fontFamily: 'Heebo',
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1A1C1E),
+          ),
+        ),
+        snackBarTheme: const SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+        ),
       ),
       home: const WorkScreen(),
     );

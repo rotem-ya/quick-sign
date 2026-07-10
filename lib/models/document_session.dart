@@ -52,6 +52,38 @@ class DocumentSession {
     placements.value = List.of(placements.value);
   }
 
+  /// Mirrors [source]'s geometry onto every placement in its group, so a
+  /// whole-booklet signature stays identical on all pages while edited.
+  void syncGroup(Placement source) {
+    final gid = source.groupId;
+    if (gid == null) return;
+    for (final p in placements.value) {
+      if (!identical(p, source) && p.groupId == gid) {
+        p.nx = source.nx;
+        p.ny = source.ny;
+        p.widthFraction = source.widthFraction;
+        p.rotation = source.rotation;
+      }
+    }
+  }
+
+  /// Removes [placement] — and its whole group when it has one. Returns the
+  /// removed placements (for undo).
+  List<Placement> removeWithGroup(Placement placement) {
+    final gid = placement.groupId;
+    final removed = gid == null
+        ? [placement]
+        : placements.value.where((p) => p.groupId == gid).toList();
+    final next = List.of(placements.value)
+      ..removeWhere((p) => removed.contains(p));
+    placements.value = next;
+    return removed;
+  }
+
+  void addAll(List<Placement> items) {
+    placements.value = List.of(placements.value)..addAll(items);
+  }
+
   /// Suggested name for the signed copy.
   String get signedFileName {
     final base = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');

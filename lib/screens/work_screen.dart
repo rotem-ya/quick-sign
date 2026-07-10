@@ -37,17 +37,18 @@ class _WorkScreenState extends State<WorkScreen> {
   static const double _pagePadding = 12;
   static const double _pageGap = 10;
 
-  /// Fallback placed sizes relative to the page width, used when the document
-  /// has no extractable text to measure (e.g. a photographed page).
+  /// Standard placed sizes relative to the page width — a signature lands at
+  /// a fixed, real-world standard size (~4cm on A4) and is resizable after.
   static const double _signatureWidthFraction = 0.22;
   static const double _stampWidthFraction = 0.2;
+  static const double _comboWidthFraction = 0.24;
   static const double _noteWidthFraction = 0.5;
 
-  /// Placement heights relative to the document's measured text-line height,
-  /// so defaults stay proportional to the writing in the document.
-  static const double _signatureLineHeights = 2.4;
-  static const double _stampLineHeights = 3.4;
+  /// Note text follows the document's measured text-line height.
   static const double _noteLineHeights = 1.1;
+
+  /// Group ids for whole-booklet placements (edit-one-edits-all).
+  int _nextGroupId = 1;
 
   final PdfRenderService _renderService = PdfRenderService();
   late final ImportService _importService = ImportService(_renderService);
@@ -206,22 +207,6 @@ class _WorkScreenState extends State<WorkScreen> {
 
   // ── Placement ─────────────────────────────────────────────────────────────
 
-  /// Width fraction for an image placement, proportional to the measured
-  /// text-line height when available.
-  double _imageWidthFraction({
-    required int pageIndex,
-    required double aspect,
-    required double lineHeights,
-    required double fallback,
-  }) {
-    final session = _session!;
-    final lineH = session.bodyTextHeightPts;
-    if (lineH == null || lineH <= 0) return fallback;
-    final pageSize = session.pageSizes[pageIndex];
-    final heightPts = lineHeights * lineH;
-    return (heightPts * aspect / pageSize.width).clamp(0.08, 0.5);
-  }
-
   double _noteWidthFractionFor(int pageIndex) {
     final session = _session!;
     final lineH = session.bodyTextHeightPts;
@@ -264,12 +249,10 @@ class _WorkScreenState extends State<WorkScreen> {
       pages: pages,
       nx: nx,
       ny: ny,
-      widthOverride: widthOverride,
-      lineHeights:
-          result.withStamp ? _stampLineHeights : _signatureLineHeights,
-      fallback: result.withStamp
-          ? _stampWidthFraction * 1.2
-          : _signatureWidthFraction,
+      widthFraction: widthOverride ??
+          (result.withStamp
+              ? _comboWidthFraction
+              : _signatureWidthFraction),
     );
   }
 
@@ -290,9 +273,7 @@ class _WorkScreenState extends State<WorkScreen> {
       pages: [pageIndex],
       nx: nx,
       ny: ny,
-      widthOverride: widthOverride,
-      lineHeights: _stampLineHeights,
-      fallback: _stampWidthFraction,
+      widthFraction: widthOverride ?? _stampWidthFraction,
     );
     // One tap replicates the stamp at the same spot on every page.
     if (session.pageCount > 1 && placed.isNotEmpty && mounted) {
@@ -307,9 +288,12 @@ class _WorkScreenState extends State<WorkScreen> {
           action: SnackBarAction(
             label: s['copyToAllPages'],
             onPressed: () {
+              final gid = _nextGroupId++;
+              original.groupId = gid;
+              final copies = <Placement>[];
               for (var page = 0; page < session.pageCount; page++) {
                 if (page == original.pageIndex) continue;
-                session.addPlacement(Placement(
+                copies.add(Placement(
                   type: PlacementType.stamp,
                   pageIndex: page,
                   nx: original.nx,
@@ -317,8 +301,10 @@ class _WorkScreenState extends State<WorkScreen> {
                   widthFraction: original.widthFraction,
                   aspectRatio: original.aspectRatio,
                   imageBytes: original.imageBytes,
+                  groupId: gid,
                 ));
               }
+              session.addAll(copies);
             },
           ),
         ));
@@ -365,34 +351,28 @@ class _WorkScreenState extends State<WorkScreen> {
     required List<int> pages,
     required double nx,
     required double ny,
-    required double lineHeights,
-    required double fallback,
-    double? widthOverride,
+    required double widthFraction,
   }) async {
     final image = await decodeImageFromList(bytes);
     final aspect = image.width / image.height;
     image.dispose();
     unawaited(HapticFeedback.mediumImpact());
+    // A multi-page placement is one editable group.
+    final gid = pages.length > 1 ? _nextGroupId++ : null;
     final placed = <Placement>[];
     for (final page in pages) {
-      final placement = Placement(
+      placed.add(Placement(
         type: type,
         pageIndex: page,
         nx: nx,
         ny: ny,
-        widthFraction: widthOverride ??
-            _imageWidthFraction(
-              pageIndex: page,
-              aspect: aspect,
-              lineHeights: lineHeights,
-              fallback: fallback,
-            ),
+        widthFraction: widthFraction,
         aspectRatio: aspect,
         imageBytes: bytes,
-      );
-      placed.add(placement);
-      _session?.addPlacement(placement);
+        groupId: gid,
+      ));
     }
+    _session?.addAll(placed);
     return placed;
   }
 
@@ -468,7 +448,8 @@ class _WorkScreenState extends State<WorkScreen> {
   void _deletePlacement(Placement placement) {
     final session = _session;
     if (session == null) return;
-    session.removePlacement(placement);
+    // Whole-booklet placements delete (and restore) as one group.
+    final removed = session.removeWithGroup(placement);
     final s = S.of(context);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -477,7 +458,7 @@ class _WorkScreenState extends State<WorkScreen> {
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: s['undo'],
-          onPressed: () => session.addPlacement(placement),
+          onPressed: () => session.addAll(removed),
         ),
       ));
   }
@@ -836,7 +817,11 @@ class _WorkScreenState extends State<WorkScreen> {
                                   heights[placement.pageIndex],
                                 ),
                                 transformation: _transformation,
-                                onChanged: session.touch,
+                                onChanged: () {
+                                  // Whole-booklet groups stay in sync.
+                                  session.syncGroup(placement);
+                                  session.touch();
+                                },
                                 onDelete: () => _deletePlacement(placement),
                                 onEdit: placement.type == PlacementType.note
                                     ? () => _editNote(placement)

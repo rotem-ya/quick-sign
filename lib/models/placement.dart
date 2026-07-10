@@ -18,7 +18,13 @@ class Placement {
     this.aspectRatio = 2.0,
     this.imageBytes,
     this.text,
+    this.groupId,
   });
+
+  /// Placements created together across pages ("sign the whole booklet")
+  /// share a group id: moving / resizing / rotating / deleting one applies
+  /// to the whole group.
+  int? groupId;
 
   final PlacementType type;
 

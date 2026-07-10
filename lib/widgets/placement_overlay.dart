@@ -47,7 +47,6 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
 
   static const double _minWidthFraction = 0.05;
   static const double _maxWidthFraction = 0.95;
-  static const double _resizeStep = 1.15;
   static const double _rotateStep = math.pi / 12; // 15°
 
   /// Padding around the content that hosts the handles.
@@ -74,9 +73,13 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
     widget.onChanged();
   }
 
-  void _resize(double factor) {
-    p.widthFraction =
-        (p.widthFraction * factor).clamp(_minWidthFraction, _maxWidthFraction);
+  /// Continuous corner-drag resize — drag outward (down/right) to grow.
+  void _onResizeDrag(DragUpdateDetails details) {
+    final delta = details.delta / _zoom;
+    final widthPx = p.widthFraction * widget.pageRect.width;
+    final newWidthPx = widthPx + delta.dx + delta.dy;
+    p.widthFraction = (newWidthPx / widget.pageRect.width)
+        .clamp(_minWidthFraction, _maxWidthFraction);
     widget.onChanged();
   }
 
@@ -132,9 +135,12 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
               ),
             ),
             if (_selected) ...[
-              PositionedDirectional(
+              // Physical corners (not directional) so the resize handle is
+              // always bottom-right — dragging down/right grows, intuitive
+              // in both RTL and LTR.
+              Positioned(
                 top: 0,
-                start: 0,
+                left: 0,
                 child: _Handle(
                   color: scheme.error,
                   icon: Icons.close,
@@ -142,9 +148,9 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                   onTap: widget.onDelete,
                 ),
               ),
-              PositionedDirectional(
+              Positioned(
                 top: 0,
-                end: 0,
+                right: 0,
                 child: _Handle(
                   color: scheme.secondary,
                   icon: Icons.rotate_right,
@@ -154,36 +160,23 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
               ),
               if (widget.onEdit != null)
                 Positioned(
-                  top: 0,
+                  bottom: 0,
                   left: 0,
-                  right: 0,
-                  child: Center(
-                    child: _Handle(
-                      color: scheme.tertiary,
-                      icon: Icons.edit,
-                      label: S.of(context)['editText'],
-                      onTap: widget.onEdit!,
-                    ),
+                  child: _Handle(
+                    color: scheme.tertiary,
+                    icon: Icons.edit,
+                    label: S.of(context)['editText'],
+                    onTap: widget.onEdit!,
                   ),
                 ),
-              PositionedDirectional(
+              Positioned(
                 bottom: 0,
-                end: 0,
+                right: 0,
                 child: _Handle(
                   color: scheme.primary,
-                  icon: Icons.add,
-                  label: S.of(context)['resizeBigger'],
-                  onTap: () => _resize(_resizeStep),
-                ),
-              ),
-              PositionedDirectional(
-                bottom: 0,
-                start: 0,
-                child: _Handle(
-                  color: scheme.primary,
-                  icon: Icons.remove,
-                  label: S.of(context)['resizeSmaller'],
-                  onTap: () => _resize(1 / _resizeStep),
+                  icon: Icons.open_in_full,
+                  label: S.of(context)['resizeDrag'],
+                  onPanUpdate: _onResizeDrag,
                 ),
               ),
             ],
@@ -234,39 +227,50 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
   }
 }
 
+/// Compact corner handle. Provide [onTap] for tap actions or [onPanUpdate]
+/// for a continuous drag action (resize).
 class _Handle extends StatelessWidget {
   const _Handle({
     required this.color,
     required this.icon,
     required this.label,
-    required this.onTap,
+    this.onTap,
+    this.onPanUpdate,
   });
 
   final Color color;
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final GestureDragUpdateCallback? onPanUpdate;
 
   @override
   Widget build(BuildContext context) {
+    final circle = Material(
+      color: color,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 16, color: Colors.white),
+        ),
+      ),
+    );
     return Tooltip(
       message: label,
       child: Semantics(
         button: true,
         label: label,
-        child: Material(
-          color: color,
-          shape: const CircleBorder(),
-          elevation: 2,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Icon(icon, size: 20, color: Colors.white),
-            ),
-          ),
-        ),
+        child: onPanUpdate == null
+            ? circle
+            : GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanUpdate: onPanUpdate,
+                child: circle,
+              ),
       ),
     );
   }

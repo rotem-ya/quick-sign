@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.example.quick_sign"
-    compileSdk = flutter.compileSdkVersion
+    // receive_sharing_intent compiles against SDK 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

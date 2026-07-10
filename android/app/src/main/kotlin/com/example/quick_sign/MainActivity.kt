@@ -51,22 +51,26 @@ class MainActivity : FlutterActivity() {
     }
 
     /** Content URIs are only readable while the grant lasts — copy to cache. */
-    private fun copyToCache(uri: Uri): String? = try {
-        val mime = contentResolver.getType(uri) ?: ""
-        val fromName = uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()
-        val ext = when {
-            mime == "application/pdf" -> "pdf"
-            mime == "image/png" -> "png"
-            mime.startsWith("image/") -> "jpg"
-            fromName in listOf("pdf", "png", "jpg", "jpeg") -> fromName!!
-            else -> "pdf"
+    private fun copyToCache(uri: Uri): String? {
+        return try {
+            val mime = contentResolver.getType(uri) ?: ""
+            val fromName =
+                uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()
+            val ext = when {
+                mime == "application/pdf" -> "pdf"
+                mime == "image/png" -> "png"
+                mime.startsWith("image/") -> "jpg"
+                fromName in listOf("pdf", "png", "jpg", "jpeg") -> fromName!!
+                else -> "pdf"
+            }
+            val out = File(cacheDir, "view_${System.currentTimeMillis()}.$ext")
+            val stream = contentResolver.openInputStream(uri) ?: return null
+            stream.use { input ->
+                out.outputStream().use { output -> input.copyTo(output) }
+            }
+            out.absolutePath
+        } catch (_: Exception) {
+            null
         }
-        val out = File(cacheDir, "view_${System.currentTimeMillis()}.$ext")
-        contentResolver.openInputStream(uri)?.use { input ->
-            out.outputStream().use { output -> input.copyTo(output) }
-        } ?: return null
-        out.absolutePath
-    } catch (_: Exception) {
-        null
     }
 }

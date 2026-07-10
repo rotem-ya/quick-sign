@@ -173,6 +173,17 @@ class StampService {
 
   Future<bool> hasStamp() async => await getStampBytes() != null;
 
+  Future<void> removeStamp() => _remove(_stampKey, _legacyStampPathKey);
+
+  Future<void> removeSignature() =>
+      _remove(_signatureKey, _legacySignaturePathKey);
+
+  Future<void> _remove(String prefKey, String legacyKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(prefKey);
+    await prefs.remove(legacyKey);
+  }
+
   Future<void> _savePng(Uint8List bytes, String prefKey) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(prefKey, base64Encode(bytes));

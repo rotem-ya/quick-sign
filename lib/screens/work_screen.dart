@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:intl/intl.dart';
 
 import '../l10n/strings.dart';
 import '../models/document_session.dart';
@@ -10,6 +12,8 @@ import '../models/placement.dart';
 import '../services/export_service.dart';
 import '../services/import_service.dart';
 import '../services/pdf_render_service.dart';
+import '../services/print_service.dart';
+import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
 import '../widgets/ad_banner.dart';
@@ -17,6 +21,7 @@ import '../widgets/bottom_toolbar.dart';
 import '../widgets/note_sheet.dart';
 import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
+import 'settings_screen.dart';
 import 'stamp_setup_screen.dart';
 
 /// The single work screen: zoomable document pages, placement overlays,
@@ -49,6 +54,8 @@ class _WorkScreenState extends State<WorkScreen> {
   final ExportService _exportService = ExportService();
   final StampService _stampService = StampService();
   final ShareService _shareService = ShareService();
+  final PrintService _printService = PrintService();
+  final SettingsService _settingsService = SettingsService();
 
   final TransformationController _transformation = TransformationController();
 
@@ -242,7 +249,18 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Future<void> _placeNote(int pageIndex, double nx, double ny) async {
-    final text = await showNoteSheet(context);
+    final s = S.of(context);
+    final name = await _settingsService.getName();
+    if (!mounted) return;
+    final text = await showNoteSheet(
+      context,
+      suggestions: [
+        DateFormat('d.M.yyyy').format(DateTime.now()),
+        s['approved'],
+        s['received'],
+        ?name,
+      ],
+    );
     if (text == null || text.isEmpty) return;
     _session?.addPlacement(Placement(
       type: PlacementType.note,
@@ -266,6 +284,7 @@ class _WorkScreenState extends State<WorkScreen> {
     final image = await decodeImageFromList(bytes);
     final aspect = image.width / image.height;
     image.dispose();
+    unawaited(HapticFeedback.mediumImpact());
     for (final page in pages) {
       _session?.addPlacement(Placement(
         type: type,
@@ -399,6 +418,15 @@ class _WorkScreenState extends State<WorkScreen> {
                 if (saved) _snack(s['copySaved']);
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.print_outlined, size: 28),
+              title: Text(s['print'], style: const TextStyle(fontSize: 18)),
+              minTileHeight: 56,
+              onTap: () async {
+                Navigator.of(sheetContext).pop();
+                await _printService.printPdf(signedBytes, fileName);
+              },
+            ),
           ],
         ),
       ),
@@ -425,7 +453,23 @@ class _WorkScreenState extends State<WorkScreen> {
     return Scaffold(
       backgroundColor: scheme.surfaceContainerHighest,
       appBar: AppBar(
-        title: Text(s['appTitle']),
+        title: session == null
+            ? Text(s['appTitle'])
+            : Column(
+                children: [
+                  Text(s['appTitle']),
+                  Text(
+                    session.fileName,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
         actions: [
           if (session != null)
             IconButton(
@@ -434,6 +478,17 @@ class _WorkScreenState extends State<WorkScreen> {
               onPressed: _busy ? null : _pickAndOpen,
               icon: const Icon(Icons.note_add_outlined),
             ),
+          IconButton(
+            tooltip: s['settings'],
+            iconSize: 26,
+            onPressed: _busy
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen()),
+                    ),
+            icon: const Icon(Icons.settings_outlined),
+          ),
         ],
       ),
       body: Column(
@@ -469,34 +524,63 @@ class _WorkScreenState extends State<WorkScreen> {
     if (_busy) return const Center(child: CircularProgressIndicator());
     final scheme = Theme.of(context).colorScheme;
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.tonalIcon(
-            onPressed: _pickAndOpen,
-            icon: const Icon(Icons.file_open_outlined, size: 32),
-            label: Text(s['openDocument'], style: const TextStyle(fontSize: 20)),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.draw_outlined,
+                  size: 52, color: scheme.onPrimaryContainer),
             ),
-          ),
-          if (ShareService.canShare) ...[
-            const SizedBox(height: 20),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.ios_share,
-                    size: 18, color: scheme.onSurfaceVariant),
-                const SizedBox(width: 6),
-                Text(
-                  s['shareHint'],
-                  style:
-                      TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
-                ),
-              ],
+            const SizedBox(height: 22),
+            Text(
+              s['emptyTitle'],
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w600, height: 1.2),
             ),
+            const SizedBox(height: 6),
+            Text(
+              s['emptySubtitle'],
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 26),
+            FilledButton.icon(
+              onPressed: _pickAndOpen,
+              icon: const Icon(Icons.file_open_outlined, size: 28),
+              label:
+                  Text(s['openDocument'], style: const TextStyle(fontSize: 19)),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 30, vertical: 18),
+              ),
+            ),
+            if (ShareService.canShare) ...[
+              const SizedBox(height: 18),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.ios_share,
+                      size: 18, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(
+                    s['shareHint'],
+                    style: TextStyle(
+                        fontSize: 15, color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -569,6 +653,35 @@ class _WorkScreenState extends State<WorkScreen> {
                 ),
               ),
             ),
+            // Current page indicator (multi-page documents only).
+            if (session.pageCount > 1)
+              Positioned(
+                top: 10,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AnimatedBuilder(
+                    animation: _transformation,
+                    builder: (context, _) {
+                      final page = _currentPage(
+                          tops, heights, constraints.maxHeight);
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xB3000000),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${page + 1} / ${session.pageCount}',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
             if (_busy)
               const Positioned.fill(
                 child: ColoredBox(
@@ -580,6 +693,20 @@ class _WorkScreenState extends State<WorkScreen> {
         );
       },
     );
+  }
+
+  /// The page whose content is at the viewport center, derived from the
+  /// InteractiveViewer transform.
+  int _currentPage(
+      List<double> tops, List<double> heights, double viewportHeight) {
+    final matrix = _transformation.value;
+    final scale = matrix.getMaxScaleOnAxis();
+    final translationY = matrix.getTranslation().y;
+    final centerDocY = (viewportHeight / 2 - translationY) / scale;
+    for (var i = 0; i < tops.length; i++) {
+      if (centerDocY < tops[i] + heights[i] + _pageGap / 2) return i;
+    }
+    return tops.length - 1;
   }
 }
 

@@ -10,10 +10,10 @@
 #    The site goes live at https://<project-id>.web.app
 name: Deploy web to Firebase Hosting
 
+# Postponed by the product owner — GitHub Pages is the active host for now.
+# Re-enable the push trigger when moving to Firebase.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, claude/document-signing-app-k3ae8n]
 
 jobs:
   build-and-deploy:

@@ -37,6 +37,9 @@ jobs:
           flutter build web --release --no-web-resources-cdn
           --base-href "/${{ github.event.repository.name }}/"
       - uses: actions/configure-pages@v5
+        with:
+          # Try to enable Pages automatically on first run.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

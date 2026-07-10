@@ -132,6 +132,53 @@ class ImportService {
     return session;
   }
 
+  /// Pure helper: appends a blank page (sized like the document's last page)
+  /// and returns the new PDF bytes.
+  static Uint8List appendBlankPage(Uint8List pdfBytes) {
+    final document = PdfDocument(inputBytes: pdfBytes);
+    try {
+      final last = document.pages[document.pages.count - 1];
+      // insert() honors an explicit size even on loaded documents (add()
+      // falls back to A4 there).
+      document.pages
+          .insert(document.pages.count, last.size, PdfMargins()..all = 0);
+      return Uint8List.fromList(document.saveSync());
+    } finally {
+      document.dispose();
+    }
+  }
+
+  /// Pure helper: appends an image as a full-bleed page and returns the new
+  /// PDF bytes.
+  static Uint8List appendImagePage(Uint8List pdfBytes, Uint8List imageBytes) {
+    final document = PdfDocument(inputBytes: pdfBytes);
+    try {
+      final bitmap = PdfBitmap(imageBytes);
+      final width = bitmap.width * 72.0 / 96.0;
+      final height = bitmap.height * 72.0 / 96.0;
+      final page = document.pages.insert(
+          document.pages.count, Size(width, height), PdfMargins()..all = 0);
+      page.graphics.drawImage(
+        bitmap,
+        Rect.fromLTWH(
+            0, 0, page.getClientSize().width, page.getClientSize().height),
+      );
+      return Uint8List.fromList(document.saveSync());
+    } finally {
+      document.dispose();
+    }
+  }
+
+  /// Manual image selection (for "add page from image").
+  Future<Uint8List?> pickImageBytes() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    return result?.files.single.bytes;
+  }
+
   /// Pure helper: wraps JPG/PNG bytes as a single-page PDF whose page exactly
   /// fits the image (96dpi pixels → 72dpi points).
   static List<int> wrapImageAsPdf(Uint8List imageBytes) {

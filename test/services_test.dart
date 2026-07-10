@@ -125,6 +125,58 @@ void main() {
     });
   });
 
+  group('ImportService.appendBlankPage / appendImagePage', () {
+    test('appends a blank page with the same size', () {
+      final base = Uint8List.fromList(
+          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+      final out = ImportService.appendBlankPage(base);
+
+      final doc = PdfDocument(inputBytes: out);
+      expect(doc.pages.count, 2);
+      final s0 = doc.pages[0].getClientSize();
+      final s1 = doc.pages[1].getClientSize();
+      expect(s1.width, closeTo(s0.width, 1));
+      expect(s1.height, closeTo(s0.height, 1));
+      doc.dispose();
+    });
+
+    test('appends an image page sized to the image', () {
+      final base = Uint8List.fromList(
+          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+      final landscape = _pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255));
+      final out = ImportService.appendImagePage(base, landscape);
+
+      final doc = PdfDocument(inputBytes: out);
+      expect(doc.pages.count, 2);
+      final s1 = doc.pages[1].getClientSize();
+      expect(s1.width / s1.height, closeTo(2.0, 0.02));
+      doc.dispose();
+    });
+  });
+
+  group('StampService.removeWhiteBackground (adaptive)', () {
+    test('removes a grayish photographed-page background, keeps the stamp',
+        () {
+      // Gray page background with a blue stamp square.
+      final source = img.Image(width: 120, height: 120, numChannels: 4);
+      img.fill(source, color: img.ColorRgba8(196, 192, 185, 255));
+      img.fillRect(source,
+          x1: 40, y1: 40, x2: 79, y2: 79,
+          color: img.ColorRgba8(30, 60, 170, 255));
+      final input = Uint8List.fromList(img.encodePng(source));
+
+      final output = img.decodePng(StampService.removeWhiteBackground(input))!;
+
+      // Cropped near the stamp, and the gray page is gone.
+      expect(output.width, lessThan(60));
+      var opaque = 0;
+      for (final pixel in output) {
+        if (pixel.a > 200) opaque++;
+      }
+      expect(opaque, greaterThan(1500)); // the 40x40 stamp survived
+    });
+  });
+
   group('StampService.removeWhiteBackground', () {
     test('turns white pixels transparent and keeps ink', () {
       final source = img.Image(width: 100, height: 100, numChannels: 4);

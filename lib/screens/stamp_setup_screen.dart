@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../services/stamp_service.dart';
+import 'stamp_designer_screen.dart';
 
 /// Stamp setup: photograph the stamp or pick any image / photographed
 /// document, mark the stamp region, the white background is removed
@@ -76,6 +77,18 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
       setState(() => _busy = false);
       _snackError();
     }
+  }
+
+  Future<void> _openDesigner() async {
+    final bytes = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(builder: (_) => const StampDesignerScreen()),
+    );
+    if (bytes == null || !mounted) return;
+    // Designed stamps are already transparent — no crop/clean needed.
+    setState(() {
+      _raw = null;
+      _processed = bytes;
+    });
   }
 
   Future<void> _confirm() async {
@@ -223,25 +236,39 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
         ],
       );
     }
-    return Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _busy ? null : () => _capture(fromCamera: false),
-            icon: const Icon(Icons.photo_library_outlined),
-            label: Text(s['fromGallery']),
-            style: OutlinedButton.styleFrom(minimumSize: const Size(48, 56)),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _busy ? null : () => _capture(fromCamera: false),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: Text(s['fromGallery']),
+                style:
+                    OutlinedButton.styleFrom(minimumSize: const Size(48, 56)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
+                onPressed: _busy ? null : () => _capture(fromCamera: true),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: Text(s['captureStamp']),
+                style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: FilledButton.icon(
-            onPressed: _busy ? null : () => _capture(fromCamera: true),
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: Text(s['captureStamp']),
-            style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
-          ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _openDesigner,
+          icon: const Icon(Icons.design_services_outlined),
+          label: Text(s['designStamp']),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(48, 56)),
         ),
       ],
     );

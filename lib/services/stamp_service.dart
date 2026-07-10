@@ -55,8 +55,12 @@ class StampService {
     return file.readAsBytes();
   }
 
-  /// Pure processing step: white background → transparent, then crop to the
+  /// Pure processing step: page background → transparent, then crop to the
   /// content bounding box so the stamp places tightly. Returns PNG bytes.
+  ///
+  /// Adaptive: the background color is estimated from the image border, so a
+  /// grayish / yellowish / shadowed photographed page disappears too — only
+  /// the stamp ink survives, with a soft edge where ink meets paper.
   static Uint8List removeWhiteBackground(Uint8List bytes) {
     final source = img.decodeImage(bytes);
     if (source == null) {
@@ -64,13 +68,23 @@ class StampService {
     }
     final rgba = source.convert(numChannels: 4);
 
+    final bg = _estimateBackground(rgba);
+    // Distance from background below [low] → fully transparent; above
+    // [high] → fully opaque ink; between → soft edge.
+    const low = 28.0;
+    const high = 72.0;
+
     var minX = rgba.width, minY = rgba.height, maxX = -1, maxY = -1;
     for (final pixel in rgba) {
-      if (pixel.r > whiteThreshold &&
-          pixel.g > whiteThreshold &&
-          pixel.b > whiteThreshold) {
+      final d = _chebyshev(pixel, bg);
+      if (d <= low) {
         pixel.a = 0;
-      } else if (pixel.a > 0) {
+        continue;
+      }
+      if (d < high) {
+        pixel.a = (pixel.a * (d - low) / (high - low)).round();
+      }
+      if (pixel.a > 40) {
         if (pixel.x < minX) minX = pixel.x;
         if (pixel.x > maxX) maxX = pixel.x;
         if (pixel.y < minY) minY = pixel.y;
@@ -89,6 +103,42 @@ class StampService {
       result = img.copyCrop(rgba, x: x, y: y, width: w, height: h);
     }
     return Uint8List.fromList(img.encodePng(result));
+  }
+
+  /// Median color of the image's border ring — a robust estimate of the
+  /// paper/page background even when it is gray, tinted or unevenly lit.
+  static img.ColorRgb8 _estimateBackground(img.Image image) {
+    final rs = <int>[], gs = <int>[], bs = <int>[];
+    void sample(int x, int y) {
+      final p = image.getPixel(x, y);
+      rs.add(p.r.toInt());
+      gs.add(p.g.toInt());
+      bs.add(p.b.toInt());
+    }
+
+    final stepX = (image.width / 48).ceil().clamp(1, image.width);
+    final stepY = (image.height / 48).ceil().clamp(1, image.height);
+    for (var x = 0; x < image.width; x += stepX) {
+      sample(x, 0);
+      sample(x, image.height - 1);
+    }
+    for (var y = 0; y < image.height; y += stepY) {
+      sample(0, y);
+      sample(image.width - 1, y);
+    }
+    int median(List<int> v) {
+      v.sort();
+      return v[v.length ~/ 2];
+    }
+
+    return img.ColorRgb8(median(rs), median(gs), median(bs));
+  }
+
+  static double _chebyshev(img.Pixel p, img.ColorRgb8 bg) {
+    final dr = (p.r - bg.r).abs();
+    final dg = (p.g - bg.g).abs();
+    final db = (p.b - bg.b).abs();
+    return [dr, dg, db].reduce((a, b) => a > b ? a : b).toDouble();
   }
 
   /// Crops [bytes] to the normalized rect (0..1 in image coordinates), then

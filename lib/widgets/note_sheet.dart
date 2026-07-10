@@ -10,26 +10,30 @@ import '../l10n/strings.dart';
 Future<String?> showNoteSheet(
   BuildContext context, {
   List<String> suggestions = const [],
+  String? initialText,
 }) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) => _NoteSheet(suggestions: suggestions),
+    builder: (context) =>
+        _NoteSheet(suggestions: suggestions, initialText: initialText),
   );
 }
 
 class _NoteSheet extends StatefulWidget {
-  const _NoteSheet({required this.suggestions});
+  const _NoteSheet({required this.suggestions, this.initialText});
 
   final List<String> suggestions;
+  final String? initialText;
 
   @override
   State<_NoteSheet> createState() => _NoteSheetState();
 }
 
 class _NoteSheetState extends State<_NoteSheet> {
-  final TextEditingController _controller = TextEditingController();
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText ?? '');
 
   @override
   void dispose() {

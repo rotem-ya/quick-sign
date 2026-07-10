@@ -44,6 +44,7 @@ class Placement {
   /// Transparent PNG — for [PlacementType.signature] and [PlacementType.stamp].
   final Uint8List? imageBytes;
 
-  /// Note text — for [PlacementType.note].
-  final String? text;
+  /// Text content — for [PlacementType.note]. Mutable so placed text can be
+  /// edited in place.
+  String? text;
 }

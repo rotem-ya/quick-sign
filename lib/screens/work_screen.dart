@@ -64,6 +64,15 @@ class _WorkScreenState extends State<WorkScreen> {
   bool _busy = false;
   StreamSubscription<String>? _shareSub;
 
+  // Long-press area marking (normalized page coordinates).
+  int? _markPageIndex;
+  Offset? _markStartN;
+  Offset? _markCurrentN;
+
+  // Document layout captured for programmatic zoom.
+  Size _viewportSize = Size.zero;
+  double _docHeight = 0;
+
   @override
   void initState() {
     super.initState();
@@ -144,6 +153,57 @@ class _WorkScreenState extends State<WorkScreen> {
     return tops;
   }
 
+  // ── Long-press area marking ───────────────────────────────────────────────
+
+  void _onMarkStart(int pageIndex, Offset local, Size pageSize) {
+    if (_busy) return;
+    unawaited(HapticFeedback.selectionClick());
+    setState(() {
+      _markPageIndex = pageIndex;
+      _markStartN = Offset(
+          local.dx / pageSize.width, local.dy / pageSize.height);
+      _markCurrentN = _markStartN;
+    });
+  }
+
+  void _onMarkUpdate(int pageIndex, Offset local, Size pageSize) {
+    if (_markPageIndex != pageIndex) return;
+    setState(() {
+      _markCurrentN = Offset(
+        (local.dx / pageSize.width).clamp(0.0, 1.0),
+        (local.dy / pageSize.height).clamp(0.0, 1.0),
+      );
+    });
+  }
+
+  Future<void> _onMarkEnd(int pageIndex) async {
+    final start = _markStartN;
+    final current = _markCurrentN;
+    setState(() {
+      _markPageIndex = null;
+      _markStartN = null;
+      _markCurrentN = null;
+    });
+    if (start == null || current == null) return;
+
+    final rect = Rect.fromPoints(start, current);
+    final nx = rect.center.dx;
+    final ny = rect.center.dy;
+    // A meaningful drag (≥ 4% of page width) sets the placement size;
+    // a plain long-press uses the proportional defaults.
+    final double? widthOverride =
+        rect.width >= 0.04 ? rect.width.clamp(0.05, 0.95) : null;
+
+    switch (_armedTool) {
+      case ToolbarTool.signature:
+        await _placeSignature(pageIndex, nx, ny, widthOverride);
+      case ToolbarTool.stamp:
+        await _placeStamp(pageIndex, nx, ny, widthOverride);
+      case ToolbarTool.note:
+        await _placeNote(pageIndex, nx, ny, widthOverride);
+    }
+  }
+
   // ── Placement ─────────────────────────────────────────────────────────────
 
   /// Width fraction for an image placement, proportional to the measured
@@ -172,24 +232,8 @@ class _WorkScreenState extends State<WorkScreen> {
     return (fontPts / (0.04 * pageSize.width)).clamp(0.2, 0.9);
   }
 
-  Future<void> _handlePageTap(
-      int pageIndex, Offset local, Size renderedSize) async {
-    final session = _session;
-    if (session == null || _busy) return;
-    final nx = (local.dx / renderedSize.width).clamp(0.0, 1.0);
-    final ny = (local.dy / renderedSize.height).clamp(0.0, 1.0);
-
-    switch (_armedTool) {
-      case ToolbarTool.signature:
-        await _placeSignature(pageIndex, nx, ny);
-      case ToolbarTool.stamp:
-        await _placeStamp(pageIndex, nx, ny);
-      case ToolbarTool.note:
-        await _placeNote(pageIndex, nx, ny);
-    }
-  }
-
-  Future<void> _placeSignature(int pageIndex, double nx, double ny) async {
+  Future<void> _placeSignature(
+      int pageIndex, double nx, double ny, double? widthOverride) async {
     final session = _session!;
     final savedSignature = await _stampService.getSignatureBytes();
     final savedStamp = await _stampService.getStampBytes();
@@ -220,6 +264,7 @@ class _WorkScreenState extends State<WorkScreen> {
       pages: pages,
       nx: nx,
       ny: ny,
+      widthOverride: widthOverride,
       lineHeights:
           result.withStamp ? _stampLineHeights : _signatureLineHeights,
       fallback: result.withStamp
@@ -228,7 +273,9 @@ class _WorkScreenState extends State<WorkScreen> {
     );
   }
 
-  Future<void> _placeStamp(int pageIndex, double nx, double ny) async {
+  Future<void> _placeStamp(
+      int pageIndex, double nx, double ny, double? widthOverride) async {
+    final session = _session!;
     var bytes = await _stampService.getStampBytes();
     if (bytes == null) {
       if (!mounted) return;
@@ -237,18 +284,49 @@ class _WorkScreenState extends State<WorkScreen> {
       );
       if (bytes == null) return;
     }
-    await _addImagePlacement(
+    final placed = await _addImagePlacement(
       type: PlacementType.stamp,
       bytes: bytes,
       pages: [pageIndex],
       nx: nx,
       ny: ny,
+      widthOverride: widthOverride,
       lineHeights: _stampLineHeights,
       fallback: _stampWidthFraction,
     );
+    // One tap replicates the stamp at the same spot on every page.
+    if (session.pageCount > 1 && placed.isNotEmpty && mounted) {
+      final s = S.of(context);
+      final original = placed.first;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content:
+              Text(s['stampPlaced'], style: const TextStyle(fontSize: 16)),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: s['copyToAllPages'],
+            onPressed: () {
+              for (var page = 0; page < session.pageCount; page++) {
+                if (page == original.pageIndex) continue;
+                session.addPlacement(Placement(
+                  type: PlacementType.stamp,
+                  pageIndex: page,
+                  nx: original.nx,
+                  ny: original.ny,
+                  widthFraction: original.widthFraction,
+                  aspectRatio: original.aspectRatio,
+                  imageBytes: original.imageBytes,
+                ));
+              }
+            },
+          ),
+        ));
+    }
   }
 
-  Future<void> _placeNote(int pageIndex, double nx, double ny) async {
+  Future<void> _placeNote(
+      int pageIndex, double nx, double ny, double? widthOverride) async {
     final s = S.of(context);
     final name = await _settingsService.getName();
     if (!mounted) return;
@@ -267,12 +345,21 @@ class _WorkScreenState extends State<WorkScreen> {
       pageIndex: pageIndex,
       nx: nx,
       ny: ny,
-      widthFraction: _noteWidthFractionFor(pageIndex),
+      widthFraction: widthOverride ?? _noteWidthFractionFor(pageIndex),
       text: text,
     ));
   }
 
-  Future<void> _addImagePlacement({
+  Future<void> _editNote(Placement placement) async {
+    final session = _session;
+    if (session == null) return;
+    final text = await showNoteSheet(context, initialText: placement.text);
+    if (text == null || text.isEmpty) return;
+    placement.text = text;
+    session.touch();
+  }
+
+  Future<List<Placement>> _addImagePlacement({
     required PlacementType type,
     required Uint8List bytes,
     required List<int> pages,
@@ -280,27 +367,97 @@ class _WorkScreenState extends State<WorkScreen> {
     required double ny,
     required double lineHeights,
     required double fallback,
+    double? widthOverride,
   }) async {
     final image = await decodeImageFromList(bytes);
     final aspect = image.width / image.height;
     image.dispose();
     unawaited(HapticFeedback.mediumImpact());
+    final placed = <Placement>[];
     for (final page in pages) {
-      _session?.addPlacement(Placement(
+      final placement = Placement(
         type: type,
         pageIndex: page,
         nx: nx,
         ny: ny,
-        widthFraction: _imageWidthFraction(
-          pageIndex: page,
-          aspect: aspect,
-          lineHeights: lineHeights,
-          fallback: fallback,
-        ),
+        widthFraction: widthOverride ??
+            _imageWidthFraction(
+              pageIndex: page,
+              aspect: aspect,
+              lineHeights: lineHeights,
+              fallback: fallback,
+            ),
         aspectRatio: aspect,
         imageBytes: bytes,
-      ));
+      );
+      placed.add(placement);
+      _session?.addPlacement(placement);
     }
+    return placed;
+  }
+
+  // ── Add pages ─────────────────────────────────────────────────────────────
+
+  Future<void> _addBlankPage() =>
+      _appendPage((bytes) async => ImportService.appendBlankPage(bytes));
+
+  Future<void> _addImagePage() => _appendPage((bytes) async {
+        final image = await _importService.pickImageBytes();
+        if (image == null) return null;
+        return ImportService.appendImagePage(bytes, image);
+      });
+
+  Future<void> _appendPage(
+      Future<Uint8List?> Function(Uint8List) transform) async {
+    final session = _session;
+    if (session == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final newBytes = await transform(session.pdfBytes);
+      if (newBytes == null) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      final newSession =
+          await _importService.openBytes(newBytes, fileName: session.fileName);
+      // Pages are appended at the end, so existing placements keep their
+      // page indices.
+      newSession.placements.value = session.placements.value;
+      session.dispose();
+      if (!mounted) return;
+      setState(() {
+        _session = newSession;
+        _busy = false;
+      });
+      _snack(S.of(context)['pageAdded']);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _snack(S.of(context)['importError']);
+    }
+  }
+
+  // ── Zoom ──────────────────────────────────────────────────────────────────
+
+  void _zoomBy(double factor) {
+    final matrix = _transformation.value;
+    final scale = matrix.getMaxScaleOnAxis();
+    final target = (scale * factor).clamp(1.0, 6.0);
+    if (target == scale) return;
+    final f = target / scale;
+    final center =
+        Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final t = matrix.getTranslation();
+    var tx = center.dx - (center.dx - t.x) * f;
+    var ty = center.dy - (center.dy - t.y) * f;
+    // Keep the document inside the viewport.
+    tx = tx.clamp(_viewportSize.width * (1 - target), 0.0);
+    final minY =
+        math.min(0.0, _viewportSize.height - _docHeight * target);
+    ty = ty.clamp(minY, 0.0);
+    _transformation.value = Matrix4.identity()
+      ..translateByDouble(tx, ty, 0, 1)
+      ..scaleByDouble(target, target, 1, 1);
   }
 
   void _onToolSelected(ToolbarTool tool) {
@@ -472,6 +629,33 @@ class _WorkScreenState extends State<WorkScreen> {
               ),
         actions: [
           if (session != null)
+            PopupMenuButton<String>(
+              tooltip: s['addPage'],
+              iconSize: 26,
+              icon: const Icon(Icons.post_add_outlined),
+              onSelected: (value) => value == 'blank'
+                  ? _addBlankPage()
+                  : _addImagePage(),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'blank',
+                  child: ListTile(
+                    leading: const Icon(Icons.insert_drive_file_outlined),
+                    title: Text(s['blankPage']),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'image',
+                  child: ListTile(
+                    leading: const Icon(Icons.image_outlined),
+                    title: Text(s['imagePage']),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          if (session != null)
             IconButton(
               tooltip: s['newDocument'],
               iconSize: 26,
@@ -594,6 +778,8 @@ class _WorkScreenState extends State<WorkScreen> {
         final heights = _pageHeights(contentWidth);
         final tops = _pageTops(heights);
         final docHeight = tops.last + heights.last + _pagePadding;
+        _viewportSize = Size(viewportWidth, constraints.maxHeight);
+        _docHeight = docHeight;
 
         return Stack(
           children: [
@@ -622,10 +808,18 @@ class _WorkScreenState extends State<WorkScreen> {
                             pageIndex: i,
                             width: contentWidth,
                             height: heights[i],
-                            onTapUp: (local, size) =>
-                                _handlePageTap(i, local, size),
+                            onMarkStart: (local, size) =>
+                                _onMarkStart(i, local, size),
+                            onMarkUpdate: (local, size) =>
+                                _onMarkUpdate(i, local, size),
+                            onMarkEnd: () => _onMarkEnd(i),
                           ),
                         ),
+                      // Live selection rectangle while long-press marking.
+                      if (_markPageIndex != null &&
+                          _markStartN != null &&
+                          _markCurrentN != null)
+                        _buildMarkRect(contentWidth, tops, heights),
                       ValueListenableBuilder<List<Placement>>(
                         valueListenable: session.placements,
                         builder: (context, placements, _) => Stack(
@@ -644,6 +838,9 @@ class _WorkScreenState extends State<WorkScreen> {
                                 transformation: _transformation,
                                 onChanged: session.touch,
                                 onDelete: () => _deletePlacement(placement),
+                                onEdit: placement.type == PlacementType.note
+                                    ? () => _editNote(placement)
+                                    : null,
                               ),
                           ],
                         ),
@@ -651,6 +848,26 @@ class _WorkScreenState extends State<WorkScreen> {
                     ],
                   ),
                 ),
+              ),
+            ),
+            // Zoom controls — mouse/keyboard friendly and accessible.
+            PositionedDirectional(
+              bottom: 14,
+              end: 14,
+              child: Column(
+                children: [
+                  _ZoomButton(
+                    icon: Icons.add,
+                    label: S.of(context)['zoomIn'],
+                    onTap: () => _zoomBy(1.4),
+                  ),
+                  const SizedBox(height: 8),
+                  _ZoomButton(
+                    icon: Icons.remove,
+                    label: S.of(context)['zoomOut'],
+                    onTap: () => _zoomBy(1 / 1.4),
+                  ),
+                ],
               ),
             ),
             // Current page indicator (multi-page documents only).
@@ -695,6 +912,29 @@ class _WorkScreenState extends State<WorkScreen> {
     );
   }
 
+  /// The translucent rectangle drawn while the user long-press-drags to mark
+  /// where (and how big) the placement should be.
+  Widget _buildMarkRect(
+      double contentWidth, List<double> tops, List<double> heights) {
+    final page = _markPageIndex!;
+    final rect = Rect.fromPoints(_markStartN!, _markCurrentN!);
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned(
+      left: _pagePadding + rect.left * contentWidth,
+      top: tops[page] + rect.top * heights[page],
+      width: math.max(rect.width * contentWidth, 4),
+      height: math.max(rect.height * heights[page], 4),
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.15),
+            border: Border.all(color: scheme.primary, width: 2),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// The page whose content is at the viewport center, derived from the
   /// InteractiveViewer transform.
   int _currentPage(
@@ -710,27 +950,37 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 }
 
-/// One rendered PDF page with a tap detector for placement.
+/// One rendered PDF page. Placement starts with a long-press: hold to anchor,
+/// drag to mark the area, release to place.
 class _PageItem extends StatelessWidget {
   const _PageItem({
     required this.renderService,
     required this.pageIndex,
     required this.width,
     required this.height,
-    required this.onTapUp,
+    required this.onMarkStart,
+    required this.onMarkUpdate,
+    required this.onMarkEnd,
   });
 
   final PdfRenderService renderService;
   final int pageIndex;
   final double width;
   final double height;
-  final void Function(Offset local, Size renderedSize) onTapUp;
+  final void Function(Offset local, Size renderedSize) onMarkStart;
+  final void Function(Offset local, Size renderedSize) onMarkUpdate;
+  final VoidCallback onMarkEnd;
 
   @override
   Widget build(BuildContext context) {
+    final size = Size(width, height);
     return GestureDetector(
-      onTapUp: (details) =>
-          onTapUp(details.localPosition, Size(width, height)),
+      onLongPressStart: (details) =>
+          onMarkStart(details.localPosition, size),
+      onLongPressMoveUpdate: (details) =>
+          onMarkUpdate(details.localPosition, size),
+      onLongPressEnd: (_) => onMarkEnd(),
+      onLongPressCancel: onMarkEnd,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -761,6 +1011,44 @@ class _PageItem extends StatelessWidget {
               filterQuality: FilterQuality.medium,
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// Small round zoom button, tooltip'd and screen-reader friendly.
+class _ZoomButton extends StatelessWidget {
+  const _ZoomButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: scheme.surfaceContainerHigh.withValues(alpha: 0.92),
+          shape: const CircleBorder(),
+          elevation: 2,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Icon(icon, size: 24, color: scheme.onSurface),
+            ),
+          ),
         ),
       ),
     );

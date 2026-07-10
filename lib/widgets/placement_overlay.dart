@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../models/placement.dart';
 import '../services/export_service.dart';
 
@@ -23,6 +24,7 @@ class PlacementOverlay extends StatefulWidget {
     required this.transformation,
     required this.onChanged,
     required this.onDelete,
+    this.onEdit,
   });
 
   final Placement placement;
@@ -30,6 +32,9 @@ class PlacementOverlay extends StatefulWidget {
   final TransformationController transformation;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
+
+  /// Present only for text placements — opens the text editor.
+  final VoidCallback? onEdit;
 
   @override
   State<PlacementOverlay> createState() => _PlacementOverlayState();
@@ -133,6 +138,7 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                 child: _Handle(
                   color: scheme.error,
                   icon: Icons.close,
+                  label: S.of(context)['deleteItem'],
                   onTap: widget.onDelete,
                 ),
               ),
@@ -142,15 +148,31 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                 child: _Handle(
                   color: scheme.secondary,
                   icon: Icons.rotate_right,
+                  label: S.of(context)['rotate'],
                   onTap: _rotate,
                 ),
               ),
+              if (widget.onEdit != null)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: _Handle(
+                      color: scheme.tertiary,
+                      icon: Icons.edit,
+                      label: S.of(context)['editText'],
+                      onTap: widget.onEdit!,
+                    ),
+                  ),
+                ),
               PositionedDirectional(
                 bottom: 0,
                 end: 0,
                 child: _Handle(
                   color: scheme.primary,
                   icon: Icons.add,
+                  label: S.of(context)['resizeBigger'],
                   onTap: () => _resize(_resizeStep),
                 ),
               ),
@@ -160,6 +182,7 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                 child: _Handle(
                   color: scheme.primary,
                   icon: Icons.remove,
+                  label: S.of(context)['resizeSmaller'],
                   onTap: () => _resize(1 / _resizeStep),
                 ),
               ),
@@ -215,25 +238,34 @@ class _Handle extends StatelessWidget {
   const _Handle({
     required this.color,
     required this.icon,
+    required this.label,
     required this.onTap,
   });
 
   final Color color;
   final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(icon, size: 20, color: Colors.white),
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: color,
+          shape: const CircleBorder(),
+          elevation: 2,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(icon, size: 20, color: Colors.white),
+            ),
+          ),
         ),
       ),
     );

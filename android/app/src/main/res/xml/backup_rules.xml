@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 11 and below: back up shared prefs (saved stamp + signature,
      stored as base64) so they survive reinstall via the user's own Google
-     backup. Caches and temp files are excluded. -->
+     backup. Caches are never backed up by the system. -->
 <full-backup-content>
     <include domain="sharedpref" path="."/>
-    <exclude domain="cache" path="."/>
 </full-backup-content>

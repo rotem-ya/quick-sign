@@ -75,5 +75,6 @@
 - [ ] 💤 מזהי AdMob אמיתיים (מניפסט + Info.plist + ad_banner.dart)
 - [ ] 💤 Application ID אמיתי במקום com.example
 - [ ] 💤 חתימת release (keystore) במקום debug
-- [ ] 💤 פריסת web לדומיין (Pages/Netlify) והפעלת ה-workflow
+- [x] פריסת web — חי ב-https://rotem-ya.github.io/quick-sign/ (Pages, פריסה
+  אוטומטית מכל דחיפה ל-main; מעבר עתידי ל-Firebase Hosting מוכן בריפו)
 - [ ] 💤 iOS Share Extension ב-Xcode

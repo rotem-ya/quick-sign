@@ -13,7 +13,7 @@ name: Deploy web to Firebase Hosting
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, claude/document-signing-app-k3ae8n]
 
 jobs:
   build-and-deploy:

@@ -40,6 +40,12 @@ android {
     }
 }
 
+dependencies {
+    // DocumentFile: ergonomic wrapper over the SAF tree URI granted by the
+    // default-folder picker (create/find/delete children).
+    implementation("androidx.documentfile:documentfile:1.0.1")
+}
+
 flutter {
     source = "../.."
 }

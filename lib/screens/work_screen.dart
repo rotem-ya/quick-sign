@@ -14,6 +14,7 @@ import '../services/import_service.dart';
 import '../services/pdf_render_service.dart';
 import '../services/print_service.dart';
 import '../services/settings_service.dart';
+import '../services/default_folder_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
 import '../widgets/ad_banner.dart';
@@ -55,6 +56,7 @@ class _WorkScreenState extends State<WorkScreen> {
   final ExportService _exportService = ExportService();
   final StampService _stampService = StampService();
   final ShareService _shareService = ShareService();
+  final DefaultFolderService _folderService = DefaultFolderService();
   final PrintService _printService = PrintService();
   final SettingsService _settingsService = SettingsService();
 
@@ -518,6 +520,8 @@ class _WorkScreenState extends State<WorkScreen> {
 
   Future<void> _showSendSheet(Uint8List signedBytes, String fileName) async {
     final s = S.of(context);
+    final defaultFolder = await _folderService.folderName();
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -525,6 +529,26 @@ class _WorkScreenState extends State<WorkScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // One-tap save into the folder chosen in Settings — the
+            // practical "connect to Drive/OneDrive" the field team asked
+            // for, without any account sign-in inside the app.
+            if (defaultFolder != null)
+              ListTile(
+                leading: Icon(Icons.bolt, size: 28, color: Colors.amber[800]),
+                title: Text(s['saveToDefaultFolder'],
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w600)),
+                subtitle: Text(defaultFolder,
+                    style: const TextStyle(fontSize: 13)),
+                minTileHeight: 56,
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  final ok =
+                      await _folderService.saveFile(signedBytes, fileName);
+                  _snack(ok ? '${s['savedToDefaultFolder']} — $defaultFolder'
+                      : s['exportError']);
+                },
+              ),
             if (ShareService.canShare)
               ListTile(
                 leading: const Icon(Icons.share, size: 28),

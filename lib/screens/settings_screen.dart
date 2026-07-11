@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../services/default_folder_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
@@ -20,10 +21,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsService _settings = SettingsService();
   final StampService _stampService = StampService();
   final ShareService _shareService = ShareService();
+  final DefaultFolderService _folderService = DefaultFolderService();
 
   final TextEditingController _nameController = TextEditingController();
   Uint8List? _stamp;
   Uint8List? _signature;
+  String? _folderName;
   bool _loaded = false;
 
   @override
@@ -36,13 +39,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final name = await _settings.getName();
     final stamp = await _stampService.getStampBytes();
     final signature = await _stampService.getSignatureBytes();
+    final folderName = await _folderService.folderName();
     if (!mounted) return;
     setState(() {
       _nameController.text = name ?? '';
       _stamp = stamp;
       _signature = signature;
+      _folderName = folderName;
       _loaded = true;
     });
+  }
+
+  Future<void> _pickFolder() async {
+    final name = await _folderService.pickFolder();
+    if (!mounted || name == null) return;
+    setState(() => _folderName = name);
+  }
+
+  Future<void> _clearFolder() async {
+    await _folderService.clearFolder();
+    if (!mounted) return;
+    setState(() => _folderName = null);
   }
 
   @override
@@ -140,6 +157,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     await _load();
                   },
                 ),
+                if (DefaultFolderService.isSupported) ...[
+                  const SizedBox(height: 24),
+                  _SectionTitle(s['defaultFolder']),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: _folderName == null
+                        ? ListTile(
+                            leading: const Icon(Icons.folder_open_outlined),
+                            title: Text(s['chooseFolder']),
+                            subtitle: Text(s['defaultFolderHint'],
+                                style: const TextStyle(fontSize: 13)),
+                            onTap: _pickFolder,
+                          )
+                        : ListTile(
+                            leading: Icon(Icons.folder,
+                                color: scheme.primary),
+                            title: Text(_folderName!),
+                            subtitle: Text(s['savesHereHint'],
+                                style: const TextStyle(fontSize: 13)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: s['changeFolder'],
+                                  onPressed: _pickFolder,
+                                  icon: const Icon(Icons.autorenew),
+                                ),
+                                IconButton(
+                                  tooltip: s['removeFolder'],
+                                  onPressed: _clearFolder,
+                                  icon: Icon(Icons.close,
+                                      color: scheme.error),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 _SectionTitle(s['backup']),
                 Card(

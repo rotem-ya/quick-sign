@@ -2,17 +2,24 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../models/saved_mark.dart';
+import '../models/stamp_design.dart';
+import '../services/marks_service.dart';
 import '../services/stamp_service.dart';
 import '../widgets/transparency_checkerboard.dart';
 import 'stamp_designer_screen.dart';
 
-/// Stamp setup: photograph the stamp or pick any image / photographed
-/// document, mark the stamp region, the white background is removed
-/// automatically, preview, save.
+/// Stamp capture: photograph the stamp or pick any image / photographed
+/// document, mark the stamp region, the background is removed automatically,
+/// preview, save into the marks library.
 ///
-/// Pops with the processed PNG bytes when the user confirms.
+/// Pass [editingMark] to replace an existing stamp's image instead of adding
+/// a new one (used from the marks library in Settings). Pops with the
+/// resulting [SavedMark] when the user confirms.
 class StampSetupScreen extends StatefulWidget {
-  const StampSetupScreen({super.key});
+  const StampSetupScreen({super.key, this.editingMark});
+
+  final SavedMark? editingMark;
 
   @override
   State<StampSetupScreen> createState() => _StampSetupScreenState();
@@ -20,12 +27,25 @@ class StampSetupScreen extends StatefulWidget {
 
 class _StampSetupScreenState extends State<StampSetupScreen> {
   final StampService _service = StampService();
+  final MarksService _marksService = MarksService();
 
   Uint8List? _raw;
   double _rawAspect = 1;
   Rect _crop = const Rect.fromLTRB(0.1, 0.1, 0.9, 0.9);
   Uint8List? _processed;
+  StampDesign? _pendingDesign;
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final editing = widget.editingMark;
+    if (editing != null) {
+      // Show the current stamp right away — Retake / Redesign / confirm.
+      _processed = editing.imageBytes;
+      _pendingDesign = editing.design;
+    }
+  }
 
   Future<void> _capture({required bool fromCamera}) async {
     setState(() => _busy = true);
@@ -81,14 +101,16 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
   }
 
   Future<void> _openDesigner() async {
-    final bytes = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(builder: (_) => const StampDesignerScreen()),
+    final result = await Navigator.of(context).push<StampDesignResult>(
+      MaterialPageRoute(
+        builder: (_) => StampDesignerScreen(initialDesign: _pendingDesign),
+      ),
     );
-    if (bytes == null || !mounted) return;
-    // Designed stamps are already transparent — no crop/clean needed.
+    if (result == null || !mounted) return;
     setState(() {
       _raw = null;
-      _processed = bytes;
+      _processed = result.bytes;
+      _pendingDesign = result.design;
     });
   }
 
@@ -96,9 +118,35 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
     final bytes = _processed;
     if (bytes == null) return;
     setState(() => _busy = true);
-    await _service.saveStamp(bytes);
+    final editing = widget.editingMark;
+    final SavedMark mark;
+    if (editing != null) {
+      await _marksService.update(
+        editing.id,
+        imageBytes: bytes,
+        design: _pendingDesign,
+        clearDesign: _pendingDesign == null,
+      );
+      mark = SavedMark(
+        id: editing.id,
+        type: editing.type,
+        name: editing.name,
+        imageBytes: bytes,
+        design: _pendingDesign,
+      );
+    } else {
+      final existingCount = (await _marksService.list(type: MarkType.stamp))
+          .length;
+      if (!mounted) return;
+      mark = await _marksService.add(
+        type: MarkType.stamp,
+        name: '${S.of(context)['stamp']} ${existingCount + 1}',
+        imageBytes: bytes,
+        design: _pendingDesign,
+      );
+    }
     if (!mounted) return;
-    Navigator.of(context).pop(bytes);
+    Navigator.of(context).pop(mark);
   }
 
   void _snackError() {
@@ -112,7 +160,11 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
     final s = S.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(s['stampSetupTitle'])),
+      appBar: AppBar(
+        title: Text(widget.editingMark != null
+            ? s['editStampTitle']
+            : s['stampSetupTitle']),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -198,7 +250,10 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
             child: OutlinedButton.icon(
               onPressed: _busy
                   ? null
-                  : () => setState(() => _processed = null),
+                  : () => setState(() {
+                        _processed = null;
+                        _pendingDesign = null;
+                      }),
               icon: const Icon(Icons.replay),
               label: Text(s['retake']),
               style: OutlinedButton.styleFrom(minimumSize: const Size(48, 56)),

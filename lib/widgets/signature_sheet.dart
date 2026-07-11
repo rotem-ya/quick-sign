@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:signature/signature.dart';
 
 import '../l10n/strings.dart';
+import '../models/saved_mark.dart';
+import '../widgets/transparency_checkerboard.dart';
 
 /// What the signature sheet produced.
 class SignatureSheetResult {
@@ -16,22 +18,22 @@ class SignatureSheetResult {
 
   final Uint8List bytes;
 
-  /// True when freshly drawn (worth remembering as the reusable signature).
+  /// True when freshly drawn (worth remembering as a new saved signature).
   final bool isNewDrawing;
 
-  /// Place the signature on top of the saved stamp as one combined item.
+  /// Place the signature on top of the first saved stamp as one combined item.
   final bool withStamp;
 
   /// Replicate the placement on every page of the document.
   final bool allPages;
 }
 
-/// Bottom sheet with a drawing canvas, one-tap shortcuts for the saved
+/// Bottom sheet with a drawing canvas, one-tap shortcuts for every saved
 /// signature / stamp, and toggles for stamp-combo and all-pages placement.
 Future<SignatureSheetResult?> showSignatureSheet(
   BuildContext context, {
-  Uint8List? savedSignature,
-  Uint8List? savedStamp,
+  List<SavedMark> savedSignatures = const [],
+  List<SavedMark> savedStamps = const [],
   bool showAllPagesOption = false,
 }) {
   return showModalBottomSheet<SignatureSheetResult>(
@@ -39,22 +41,33 @@ Future<SignatureSheetResult?> showSignatureSheet(
     isScrollControlled: true,
     useSafeArea: true,
     builder: (context) => _SignatureSheet(
-      savedSignature: savedSignature,
-      savedStamp: savedStamp,
+      savedSignatures: savedSignatures,
+      savedStamps: savedStamps,
       showAllPagesOption: showAllPagesOption,
     ),
   );
 }
 
+/// A minimal drawing-only sheet — used to redraw an existing saved signature
+/// from the marks library in Settings (no chips, no toggles).
+Future<Uint8List?> showDrawCanvasSheet(BuildContext context) {
+  return showModalBottomSheet<Uint8List>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) => const _DrawCanvasSheet(),
+  );
+}
+
 class _SignatureSheet extends StatefulWidget {
   const _SignatureSheet({
-    this.savedSignature,
-    this.savedStamp,
+    required this.savedSignatures,
+    required this.savedStamps,
     required this.showAllPagesOption,
   });
 
-  final Uint8List? savedSignature;
-  final Uint8List? savedStamp;
+  final List<SavedMark> savedSignatures;
+  final List<SavedMark> savedStamps;
   final bool showAllPagesOption;
 
   @override
@@ -81,7 +94,7 @@ class _SignatureSheetState extends State<_SignatureSheet> {
     Navigator.of(context).pop(SignatureSheetResult(
       bytes: bytes,
       isNewDrawing: isNewDrawing,
-      withStamp: _withStamp && widget.savedStamp != null,
+      withStamp: _withStamp && widget.savedStamps.isNotEmpty,
       allPages: _allPages,
     ));
   }
@@ -103,32 +116,31 @@ class _SignatureSheetState extends State<_SignatureSheet> {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final theme = Theme.of(context);
+    final hasSaved =
+        widget.savedSignatures.isNotEmpty || widget.savedStamps.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.savedSignature != null || widget.savedStamp != null) ...[
+          if (hasSaved) ...[
             Wrap(
               spacing: 8,
               runSpacing: 4,
               children: [
-                if (widget.savedSignature != null)
-                  ActionChip(
-                    avatar: const Icon(Icons.draw, size: 20),
-                    label: Text(s['savedSignature']),
-                    onPressed: () =>
-                        _pop(widget.savedSignature!, isNewDrawing: false),
+                for (final mark in widget.savedSignatures)
+                  _MarkChip(
+                    mark: mark,
+                    onTap: () => _pop(mark.imageBytes, isNewDrawing: false),
                   ),
-                if (widget.savedStamp != null)
-                  ActionChip(
-                    avatar: const Icon(Icons.approval, size: 20),
-                    label: Text(s['myStamp']),
-                    onPressed: () {
+                for (final mark in widget.savedStamps)
+                  _MarkChip(
+                    mark: mark,
+                    onTap: () {
                       // The stamp itself — the combo toggle is irrelevant.
                       Navigator.of(context).pop(SignatureSheetResult(
-                        bytes: widget.savedStamp!,
+                        bytes: mark.imageBytes,
                         isNewDrawing: false,
                         withStamp: false,
                         allPages: _allPages,
@@ -156,7 +168,7 @@ class _SignatureSheetState extends State<_SignatureSheet> {
           Wrap(
             spacing: 8,
             children: [
-              if (widget.savedStamp != null)
+              if (widget.savedStamps.isNotEmpty)
                 FilterChip(
                   avatar: _withStamp
                       ? null
@@ -177,6 +189,125 @@ class _SignatureSheetState extends State<_SignatureSheet> {
             ],
           ),
           const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _controller.clear,
+                  icon: const Icon(Icons.replay),
+                  label: Text(s['clear']),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(48, 52),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: FilledButton.icon(
+                  onPressed: _confirm,
+                  icon: const Icon(Icons.check),
+                  label: Text(s['done']),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(48, 52),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A saved signature/stamp shortcut: small transparent thumbnail + name.
+class _MarkChip extends StatelessWidget {
+  const _MarkChip({required this.mark, required this.onTap});
+
+  final SavedMark mark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: TransparencyCheckerboard(
+            tile: 6,
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Image.memory(mark.imageBytes, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+      label: Text(mark.name),
+      onPressed: onTap,
+    );
+  }
+}
+
+class _DrawCanvasSheet extends StatefulWidget {
+  const _DrawCanvasSheet();
+
+  @override
+  State<_DrawCanvasSheet> createState() => _DrawCanvasSheetState();
+}
+
+class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
+  late final SignatureController _controller = SignatureController(
+    penStrokeWidth: 4,
+    penColor: const Color(0xFF1A2C7C),
+    exportBackgroundColor: Colors.transparent,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirm() async {
+    final s = S.of(context);
+    if (_controller.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s['emptySignature'])),
+      );
+      return;
+    }
+    final bytes = await _controller.toPngBytes();
+    if (bytes == null || !mounted) return;
+    Navigator.of(context).pop(bytes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 220,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Signature(
+              controller: _controller,
+              backgroundColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(

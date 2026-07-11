@@ -4,21 +4,25 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../models/stamp_design.dart';
 import '../widgets/transparency_checkerboard.dart';
 
 /// Built-in digital stamp designer: a classic editable template — up to three
 /// text lines, an optional border (none / single / double), in traditional
 /// stamp ink colors.
 ///
-/// Pops with a transparent PNG of the rendered stamp — the canvas is never
-/// filled, so there is no background of any color, not even white.
+/// Pops with a [StampDesignResult] — the rendered transparent PNG plus the
+/// design recipe, so the mark can be reopened here and edited later instead
+/// of only replaced. Pass [initialDesign] to open already prefilled.
 class StampDesignerScreen extends StatefulWidget {
-  const StampDesignerScreen({super.key});
+  const StampDesignerScreen({super.key, this.initialDesign});
+
+  final StampDesign? initialDesign;
 
   @override
   State<StampDesignerScreen> createState() => _StampDesignerScreenState();
 
-  /// Renders the stamp to a transparent PNG (1200px wide). The canvas is
+  /// Renders the design to a transparent PNG (1200px wide). The canvas is
   /// never filled with any color, so every pixel outside the ink strokes and
   /// glyphs stays fully transparent — public and pure, so it's directly
   /// testable without pumping a widget tree.
@@ -43,9 +47,13 @@ class StampDesignerScreen extends StatefulWidget {
   }
 }
 
-enum StampShape { rectangle, ellipse }
+/// What the designer produced: the rendered PNG plus the editable recipe.
+class StampDesignResult {
+  StampDesignResult({required this.bytes, required this.design});
 
-enum StampBorder { none, single, double_ }
+  final Uint8List bytes;
+  final StampDesign design;
+}
 
 class _StampDesignerScreenState extends State<StampDesignerScreen> {
   final _line1 = TextEditingController();
@@ -59,9 +67,24 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
     Color(0xFF202124), // black
   ];
 
-  Color _color = _inkColors.first;
+  late Color _color = _inkColors.first;
   StampShape _shape = StampShape.rectangle;
   StampBorder _border = StampBorder.double_;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialDesign;
+    if (initial != null) {
+      final lines = initial.lines;
+      if (lines.isNotEmpty) _line1.text = lines[0];
+      if (lines.length > 1) _line2.text = lines[1];
+      if (lines.length > 2) _line3.text = lines[2];
+      _color = Color(initial.colorValue);
+      _shape = initial.shape;
+      _border = initial.border;
+    }
+  }
 
   @override
   void dispose() {
@@ -77,14 +100,23 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
       ];
 
   Future<void> _save() async {
+    final lines = _lines;
     final bytes = await StampDesignerScreen.renderStamp(
-      lines: _lines,
+      lines: lines,
       color: _color,
       shape: _shape,
       border: _border,
     );
     if (!mounted) return;
-    Navigator.of(context).pop(bytes);
+    Navigator.of(context).pop(StampDesignResult(
+      bytes: bytes,
+      design: StampDesign(
+        lines: lines,
+        colorValue: _color.toARGB32(),
+        shape: _shape,
+        border: _border,
+      ),
+    ));
   }
 
   static void _paintStamp(
@@ -114,7 +146,8 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
     // Text still lays out inside where the inner border would sit, whether
     // or not it's actually drawn, so the layout stays stable across border
     // styles as the user switches between them.
-    final textBounds = border == StampBorder.none ? outer.deflate(size.height * 0.04) : inner;
+    final textBounds =
+        border == StampBorder.none ? outer.deflate(size.height * 0.04) : inner;
 
     if (border != StampBorder.none) {
       switch (shape) {
@@ -164,8 +197,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
         (painters.length - 1) * size.height * gapFactor;
     var y = size.height / 2 - totalHeight / 2;
     for (final painter in painters) {
-      painter.paint(
-          canvas, Offset(size.width / 2 - painter.width / 2, y));
+      painter.paint(canvas, Offset(size.width / 2 - painter.width / 2, y));
       y += painter.height + size.height * gapFactor;
       painter.dispose();
     }

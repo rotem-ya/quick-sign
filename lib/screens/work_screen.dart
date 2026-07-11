@@ -9,10 +9,12 @@ import 'package:intl/intl.dart';
 import '../l10n/strings.dart';
 import '../models/document_session.dart';
 import '../models/placement.dart';
+import '../models/saved_mark.dart';
 import '../services/default_folder_service.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
 import '../services/import_service.dart';
+import '../services/marks_service.dart';
 import '../services/pdf_render_service.dart';
 import '../services/print_service.dart';
 import '../services/settings_service.dart';
@@ -24,6 +26,7 @@ import '../widgets/note_sheet.dart';
 import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
 import 'history_screen.dart';
+import 'page_manager_screen.dart';
 import 'settings_screen.dart';
 import 'stamp_setup_screen.dart';
 
@@ -56,7 +59,7 @@ class _WorkScreenState extends State<WorkScreen> {
   final PdfRenderService _renderService = PdfRenderService();
   late final ImportService _importService = ImportService(_renderService);
   final ExportService _exportService = ExportService();
-  final StampService _stampService = StampService();
+  final MarksService _marksService = MarksService();
   final ShareService _shareService = ShareService();
   final DefaultFolderService _folderService = DefaultFolderService();
   final PrintService _printService = PrintService();
@@ -225,25 +228,32 @@ class _WorkScreenState extends State<WorkScreen> {
   Future<void> _placeSignature(
       int pageIndex, double nx, double ny, double? widthOverride) async {
     final session = _session!;
-    final savedSignature = await _stampService.getSignatureBytes();
-    final savedStamp = await _stampService.getStampBytes();
+    final savedSignatures = await _marksService.list(type: MarkType.signature);
+    final savedStamps = await _marksService.list(type: MarkType.stamp);
     if (!mounted) return;
     final result = await showSignatureSheet(
       context,
-      savedSignature: savedSignature,
-      savedStamp: savedStamp,
+      savedSignatures: savedSignatures,
+      savedStamps: savedStamps,
       showAllPagesOption: session.pageCount > 1,
     );
-    if (result == null) return;
+    if (result == null || !mounted) return;
 
     if (result.isNewDrawing) {
-      // Remember the raw drawing (without the stamp) for the one-tap shortcut.
-      unawaited(_stampService.saveSignature(result.bytes));
+      // Every fresh drawing joins the library — organize/rename/delete it
+      // later from Settings.
+      unawaited(_marksService.add(
+        type: MarkType.signature,
+        name: '${S.of(context)['sign']} ${savedSignatures.length + 1}',
+        imageBytes: result.bytes,
+      ));
     }
     var bytes = result.bytes;
-    if (result.withStamp && savedStamp != null) {
-      bytes =
-          await StampService.compositeSignatureOverStamp(bytes, savedStamp);
+    if (result.withStamp && savedStamps.isNotEmpty) {
+      // Combines with the most recently saved stamp — picking a specific
+      // one among several is still available via that stamp's own chip.
+      bytes = await StampService.compositeSignatureOverStamp(
+          bytes, savedStamps.last.imageBytes);
     }
     final pages = result.allPages
         ? List.generate(session.pageCount, (i) => i)
@@ -264,14 +274,20 @@ class _WorkScreenState extends State<WorkScreen> {
   Future<void> _placeStamp(
       int pageIndex, double nx, double ny, double? widthOverride) async {
     final session = _session!;
-    var bytes = await _stampService.getStampBytes();
-    if (bytes == null) {
-      if (!mounted) return;
-      bytes = await Navigator.of(context).push<Uint8List>(
+    final stamps = await _marksService.list(type: MarkType.stamp);
+    if (!mounted) return;
+    Uint8List? bytes;
+    if (stamps.isEmpty) {
+      final mark = await Navigator.of(context).push<SavedMark>(
         MaterialPageRoute(builder: (_) => const StampSetupScreen()),
       );
-      if (bytes == null) return;
+      bytes = mark?.imageBytes;
+    } else if (stamps.length == 1) {
+      bytes = stamps.single.imageBytes;
+    } else {
+      bytes = await _pickStamp(stamps);
     }
+    if (bytes == null) return;
     final placed = await _addImagePlacement(
       type: PlacementType.stamp,
       bytes: bytes,
@@ -314,6 +330,51 @@ class _WorkScreenState extends State<WorkScreen> {
           ),
         ));
     }
+  }
+
+  /// Quick chooser when more than one stamp is saved — thumbnails + an
+  /// "add new" tile, so having a library never makes the common case slower.
+  Future<Uint8List?> _pickStamp(List<SavedMark> stamps) async {
+    final s = S.of(context);
+    return showModalBottomSheet<Uint8List>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final mark in stamps)
+                ActionChip(
+                  avatar: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Image.memory(mark.imageBytes, fit: BoxFit.contain),
+                  ),
+                  label: Text(mark.name),
+                  onPressed: () => Navigator.of(sheetContext).pop(mark.imageBytes),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 20),
+                label: Text(s['newMark']),
+                onPressed: () async {
+                  // Push on top of the still-open sheet, then resolve the
+                  // sheet with whatever StampSetupScreen returns.
+                  final mark = await Navigator.of(context).push<SavedMark>(
+                    MaterialPageRoute(
+                        builder: (_) => const StampSetupScreen()),
+                  );
+                  if (!sheetContext.mounted) return;
+                  Navigator.of(sheetContext).pop(mark?.imageBytes);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _placeNote(
@@ -381,45 +442,23 @@ class _WorkScreenState extends State<WorkScreen> {
     return placed;
   }
 
-  // ── Add pages ─────────────────────────────────────────────────────────────
+  // ── Manage pages (delete / append from image or PDF) ────────────────────────
 
-  Future<void> _addBlankPage() =>
-      _appendPage((bytes) async => ImportService.appendBlankPage(bytes));
-
-  Future<void> _addImagePage() => _appendPage((bytes) async {
-        final image = await _importService.pickImageBytes();
-        if (image == null) return null;
-        return ImportService.appendImagePage(bytes, image);
-      });
-
-  Future<void> _appendPage(
-      Future<Uint8List?> Function(Uint8List) transform) async {
+  Future<void> _managePages() async {
     final session = _session;
     if (session == null || _busy) return;
-    setState(() => _busy = true);
-    try {
-      final newBytes = await transform(session.pdfBytes);
-      if (newBytes == null) {
-        if (mounted) setState(() => _busy = false);
-        return;
-      }
-      final newSession =
-          await _importService.openBytes(newBytes, fileName: session.fileName);
-      // Pages are appended at the end, so existing placements keep their
-      // page indices.
-      newSession.placements.value = session.placements.value;
-      session.dispose();
-      if (!mounted) return;
-      setState(() {
-        _session = newSession;
-        _busy = false;
-      });
-      _snack(S.of(context)['pageAdded']);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      _snack(S.of(context)['importError']);
-    }
+    final newSession = await Navigator.of(context).push<DocumentSession>(
+      MaterialPageRoute(
+        builder: (_) => PageManagerScreen(
+          session: session,
+          renderService: _renderService,
+          importService: _importService,
+        ),
+      ),
+    );
+    if (newSession == null || !mounted) return;
+    session.dispose();
+    setState(() => _session = newSession);
   }
 
   // ── Zoom ──────────────────────────────────────────────────────────────────
@@ -650,31 +689,11 @@ class _WorkScreenState extends State<WorkScreen> {
               ),
         actions: [
           if (session != null)
-            PopupMenuButton<String>(
-              tooltip: s['addPage'],
+            IconButton(
+              tooltip: s['managePages'],
               iconSize: 26,
+              onPressed: _busy ? null : _managePages,
               icon: const Icon(Icons.post_add_outlined),
-              onSelected: (value) => value == 'blank'
-                  ? _addBlankPage()
-                  : _addImagePage(),
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'blank',
-                  child: ListTile(
-                    leading: const Icon(Icons.insert_drive_file_outlined),
-                    title: Text(s['blankPage']),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'image',
-                  child: ListTile(
-                    leading: const Icon(Icons.image_outlined),
-                    title: Text(s['imagePage']),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
             ),
           if (session != null)
             IconButton(

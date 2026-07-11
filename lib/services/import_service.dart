@@ -169,6 +169,64 @@ class ImportService {
     }
   }
 
+  /// Rebuilds a PDF containing only [keepIndices] (0-based), in the given
+  /// order. Vector content is preserved via PDF page templates — not
+  /// rasterized — so this is the single primitive behind "delete pages" (and
+  /// could back reordering later, since the order is caller-controlled).
+  static Uint8List rebuildWithPages(Uint8List pdfBytes, List<int> keepIndices) {
+    final source = PdfDocument(inputBytes: pdfBytes);
+    final target = PdfDocument();
+    try {
+      // insert() relies on catalog structure only a loaded document has —
+      // on a brand-new PdfDocument, add() (driven by pageSettings, like
+      // wrapImageAsPdf) is the technique that supports a per-page size.
+      target.pageSettings.margins.all = 0;
+      for (final index in keepIndices) {
+        final sourcePage = source.pages[index];
+        final template = sourcePage.createTemplate();
+        target.pageSettings.size = sourcePage.size;
+        target.pageSettings.orientation = sourcePage.size.width > sourcePage.size.height
+            ? PdfPageOrientation.landscape
+            : PdfPageOrientation.portrait;
+        final newPage = target.pages.add();
+        newPage.graphics.drawPdfTemplate(template, Offset.zero, sourcePage.size);
+      }
+      return Uint8List.fromList(target.saveSync());
+    } finally {
+      source.dispose();
+      target.dispose();
+    }
+  }
+
+  /// Appends every page of [otherPdfBytes] onto [baseBytes] — merging in
+  /// another PDF's pages, preserving their vector content via PDF templates.
+  static Uint8List mergePdfPages(Uint8List baseBytes, Uint8List otherPdfBytes) {
+    final base = PdfDocument(inputBytes: baseBytes);
+    final other = PdfDocument(inputBytes: otherPdfBytes);
+    try {
+      for (var i = 0; i < other.pages.count; i++) {
+        final sourcePage = other.pages[i];
+        final template = sourcePage.createTemplate();
+        final newPage = base.pages.insert(
+            base.pages.count, sourcePage.size, PdfMargins()..all = 0);
+        newPage.graphics.drawPdfTemplate(template, Offset.zero, sourcePage.size);
+      }
+      return Uint8List.fromList(base.saveSync());
+    } finally {
+      base.dispose();
+      other.dispose();
+    }
+  }
+
+  /// Appends each image in [images] as its own full-bleed page, in order.
+  static Uint8List appendImagePages(Uint8List pdfBytes, List<Uint8List> images) {
+    var bytes = pdfBytes;
+    for (final image in images) {
+      bytes = appendImagePage(bytes, image);
+    }
+    return bytes;
+  }
+
   /// Manual image selection (for "add page from image").
   Future<Uint8List?> pickImageBytes() async {
     final result = await FilePicker.platform.pickFiles(
@@ -177,6 +235,39 @@ class ImportService {
       withData: true,
     );
     return result?.files.single.bytes;
+  }
+
+  /// Manual multi-image selection (for "add several pages from images").
+  Future<List<Uint8List>> pickImageBytesMultiple() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png'],
+      withData: true,
+      allowMultiple: true,
+    );
+    if (result == null) return const [];
+    return [for (final f in result.files) if (f.bytes != null) f.bytes!];
+  }
+
+  /// Manual PDF selection (for "add pages from another PDF").
+  Future<Uint8List?> pickPdfBytes() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    return result?.files.single.bytes;
+  }
+
+  /// Page count of arbitrary PDF bytes — cheap (no rendering), used to label
+  /// a staged merge before it's actually applied.
+  static int pdfPageCount(Uint8List pdfBytes) {
+    final document = PdfDocument(inputBytes: pdfBytes);
+    try {
+      return document.pages.count;
+    } finally {
+      document.dispose();
+    }
   }
 
   /// Pure helper: wraps JPG/PNG bytes as a single-page PDF whose page exactly

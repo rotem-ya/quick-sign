@@ -10,11 +10,14 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import 'package:quick_sign/models/history_entry.dart';
 import 'package:quick_sign/models/placement.dart';
+import 'package:quick_sign/models/saved_mark.dart';
+import 'package:quick_sign/models/stamp_design.dart';
 import 'package:quick_sign/screens/stamp_designer_screen.dart';
 import 'package:quick_sign/services/document_metrics.dart';
 import 'package:quick_sign/services/export_service.dart';
 import 'package:quick_sign/services/history_service.dart';
 import 'package:quick_sign/services/import_service.dart';
+import 'package:quick_sign/services/marks_service.dart';
 import 'package:quick_sign/services/stamp_service.dart';
 
 class _FakePathProviderPlatform extends PathProviderPlatform {
@@ -166,6 +169,96 @@ void main() {
       final s1 = doc.pages[1].getClientSize();
       expect(s1.width / s1.height, closeTo(2.0, 0.02));
       doc.dispose();
+    });
+  });
+
+  group('ImportService.rebuildWithPages', () {
+    Uint8List threePagePdf() {
+      final sizes = [
+        _pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255)),
+        _pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255)),
+        _pngOf(300, 300, img.ColorRgba8(200, 30, 30, 255)),
+      ];
+      var bytes = Uint8List.fromList(ImportService.wrapImageAsPdf(sizes[0]));
+      bytes = ImportService.appendImagePage(bytes, sizes[1]);
+      bytes = ImportService.appendImagePage(bytes, sizes[2]);
+      return bytes;
+    }
+
+    test('keeps only the requested pages, in order', () {
+      final source = threePagePdf();
+      final out = ImportService.rebuildWithPages(source, [2, 0]);
+
+      final doc = PdfDocument(inputBytes: out);
+      expect(doc.pages.count, 2);
+      // Page 0 of the result is original page 2 (square, ~1:1).
+      final s0 = doc.pages[0].getClientSize();
+      expect(s0.width / s0.height, closeTo(1.0, 0.02));
+      // Page 1 of the result is original page 0 (portrait, 400x600).
+      final s1 = doc.pages[1].getClientSize();
+      expect(s1.width / s1.height, closeTo(400 / 600, 0.02));
+      doc.dispose();
+    });
+
+    test('dropping all but one page yields a single-page document', () {
+      final source = threePagePdf();
+      final out = ImportService.rebuildWithPages(source, [1]);
+
+      final doc = PdfDocument(inputBytes: out);
+      expect(doc.pages.count, 1);
+      final s0 = doc.pages[0].getClientSize();
+      expect(s0.width / s0.height, closeTo(2.0, 0.02));
+      doc.dispose();
+    });
+  });
+
+  group('ImportService.mergePdfPages', () {
+    test('appends every page of the other PDF, preserving sizes', () {
+      final base = Uint8List.fromList(
+          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+      var other = Uint8List.fromList(
+          ImportService.wrapImageAsPdf(_pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255))));
+      other = ImportService.appendImagePage(
+          other, _pngOf(300, 300, img.ColorRgba8(200, 30, 30, 255)));
+
+      final out = ImportService.mergePdfPages(base, other);
+
+      final doc = PdfDocument(inputBytes: out);
+      expect(doc.pages.count, 3);
+      final s1 = doc.pages[1].getClientSize();
+      expect(s1.width / s1.height, closeTo(2.0, 0.02));
+      final s2 = doc.pages[2].getClientSize();
+      expect(s2.width / s2.height, closeTo(1.0, 0.02));
+      doc.dispose();
+    });
+  });
+
+  group('ImportService.appendImagePages', () {
+    test('appends each image as its own page, in order', () {
+      final base = Uint8List.fromList(
+          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+      final out = ImportService.appendImagePages(base, [
+        _pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255)),
+        _pngOf(300, 300, img.ColorRgba8(200, 30, 30, 255)),
+      ]);
+
+      final doc = PdfDocument(inputBytes: out);
+      expect(doc.pages.count, 3);
+      final s1 = doc.pages[1].getClientSize();
+      expect(s1.width / s1.height, closeTo(2.0, 0.02));
+      final s2 = doc.pages[2].getClientSize();
+      expect(s2.width / s2.height, closeTo(1.0, 0.02));
+      doc.dispose();
+    });
+  });
+
+  group('ImportService.pdfPageCount', () {
+    test('reports the number of pages', () {
+      final base = Uint8List.fromList(
+          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+      final withExtra = ImportService.appendBlankPage(base);
+      expect(ImportService.pdfPageCount(base), 1);
+      expect(ImportService.pdfPageCount(withExtra), 2);
     });
   });
 
@@ -489,6 +582,156 @@ void main() {
       final edge = decoded.getPixel(2, 50);
       expect(edge.r, greaterThan(150));
       expect(edge.b, lessThan(100));
+    });
+  });
+
+  group('StampDesign.toJson/fromJson', () {
+    test('round-trips all fields', () {
+      final design = StampDesign(
+        lines: const ['שורה 1', 'שורה 2'],
+        colorValue: const ui.Color(0xFF3355AA).toARGB32(),
+        shape: StampShape.ellipse,
+        border: StampBorder.double_,
+      );
+      final restored = StampDesign.fromJson(design.toJson());
+      expect(restored, isNotNull);
+      expect(restored!.lines, design.lines);
+      expect(restored.colorValue, design.colorValue);
+      expect(restored.shape, StampShape.ellipse);
+      expect(restored.border, StampBorder.double_);
+    });
+
+    test('returns null for malformed data', () {
+      expect(StampDesign.fromJson(const {'lines': 'not a list'}), isNull);
+    });
+  });
+
+  group('SavedMark.toJson/fromJson', () {
+    test('round-trips a signature (no design)', () {
+      final mark = SavedMark(
+        id: 'abc123',
+        type: MarkType.signature,
+        name: 'החתימה שלי',
+        imageBytes: _pngOf(40, 20, img.ColorRgba8(0, 0, 0, 255)),
+      );
+      final restored = SavedMark.fromJson(mark.toJson());
+      expect(restored, isNotNull);
+      expect(restored!.id, mark.id);
+      expect(restored.type, MarkType.signature);
+      expect(restored.name, mark.name);
+      expect(restored.imageBytes, mark.imageBytes);
+      expect(restored.design, isNull);
+    });
+
+    test('round-trips a stamp with a design', () {
+      final design = StampDesign(
+        lines: const ['שם החברה'],
+        colorValue: const ui.Color(0xFF117733).toARGB32(),
+        shape: StampShape.rectangle,
+        border: StampBorder.single,
+      );
+      final mark = SavedMark(
+        id: 'xyz789',
+        type: MarkType.stamp,
+        name: 'חותמת 1',
+        imageBytes: _pngOf(120, 60, img.ColorRgba8(0, 100, 0, 255)),
+        design: design,
+      );
+      final restored = SavedMark.fromJson(mark.toJson());
+      expect(restored, isNotNull);
+      expect(restored!.type, MarkType.stamp);
+      expect(restored.design, isNotNull);
+      expect(restored.design!.lines, design.lines);
+    });
+
+    test('returns null for malformed data', () {
+      expect(SavedMark.fromJson(const {'id': 'a'}), isNull);
+    });
+  });
+
+  group('MarksService', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('add/list/update/delete/restore round-trip', () async {
+      final service = MarksService();
+      final signatureBytes = _pngOf(40, 20, img.ColorRgba8(0, 0, 0, 255));
+      final added = await service.add(
+        type: MarkType.signature,
+        name: 'חתימה 1',
+        imageBytes: signatureBytes,
+      );
+
+      var signatures = await service.list(type: MarkType.signature);
+      expect(signatures, hasLength(1));
+      expect(signatures.single.id, added.id);
+      expect(signatures.single.name, 'חתימה 1');
+
+      final newBytes = _pngOf(50, 25, img.ColorRgba8(10, 10, 10, 255));
+      await service.update(added.id, name: 'חתימה מעודכנת', imageBytes: newBytes);
+      signatures = await service.list(type: MarkType.signature);
+      expect(signatures.single.name, 'חתימה מעודכנת');
+      expect(signatures.single.imageBytes, newBytes);
+
+      await service.delete(added.id);
+      signatures = await service.list(type: MarkType.signature);
+      expect(signatures, isEmpty);
+
+      await service.restore(signatures.isEmpty ? added : signatures.single);
+      signatures = await service.list(type: MarkType.signature);
+      expect(signatures, hasLength(1));
+    });
+
+    test('supports multiple signatures and stamps independently', () async {
+      final service = MarksService();
+      await service.add(
+        type: MarkType.signature,
+        name: 'חתימה א',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(1, 1, 1, 255)),
+      );
+      await service.add(
+        type: MarkType.signature,
+        name: 'חתימה ב',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(2, 2, 2, 255)),
+      );
+      await service.add(
+        type: MarkType.stamp,
+        name: 'חותמת א',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(3, 3, 3, 255)),
+      );
+
+      final signatures = await service.list(type: MarkType.signature);
+      final stamps = await service.list(type: MarkType.stamp);
+      expect(signatures, hasLength(2));
+      expect(stamps, hasLength(1));
+
+      final all = await service.list();
+      expect(all, hasLength(3));
+    });
+
+    test('update can clear a design', () async {
+      final service = MarksService();
+      final design = StampDesign(
+        lines: const ['A'],
+        colorValue: const ui.Color(0xFF000000).toARGB32(),
+        shape: StampShape.rectangle,
+        border: StampBorder.none,
+      );
+      final added = await service.add(
+        type: MarkType.stamp,
+        name: 'חותמת',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(1, 1, 1, 255)),
+        design: design,
+      );
+      var stamps = await service.list(type: MarkType.stamp);
+      expect(stamps.single.design, isNotNull);
+
+      await service.update(added.id,
+          imageBytes: _pngOf(10, 10, img.ColorRgba8(2, 2, 2, 255)),
+          clearDesign: true);
+      stamps = await service.list(type: MarkType.stamp);
+      expect(stamps.single.design, isNull);
     });
   });
 }

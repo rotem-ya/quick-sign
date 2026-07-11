@@ -1,16 +1,19 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../models/saved_mark.dart';
 import '../services/default_folder_service.dart';
+import '../services/marks_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
-import '../services/stamp_service.dart';
+import '../widgets/signature_sheet.dart';
 import '../widgets/transparency_checkerboard.dart';
+import 'stamp_designer_screen.dart';
 import 'stamp_setup_screen.dart';
 
-/// Profile, saved signature/stamp management, portable backup, about.
+/// Profile, the signatures/stamps library (any number of each — name, add,
+/// edit, delete), default save folder, portable backup, about.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -20,13 +23,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsService _settings = SettingsService();
-  final StampService _stampService = StampService();
+  final MarksService _marksService = MarksService();
   final ShareService _shareService = ShareService();
   final DefaultFolderService _folderService = DefaultFolderService();
 
   final TextEditingController _nameController = TextEditingController();
-  Uint8List? _stamp;
-  Uint8List? _signature;
+  List<SavedMark> _signatures = [];
+  List<SavedMark> _stamps = [];
   String? _folderName;
   bool _loaded = false;
 
@@ -38,14 +41,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final name = await _settings.getName();
-    final stamp = await _stampService.getStampBytes();
-    final signature = await _stampService.getSignatureBytes();
+    final signatures = await _marksService.list(type: MarkType.signature);
+    final stamps = await _marksService.list(type: MarkType.stamp);
     final folderName = await _folderService.folderName();
     if (!mounted) return;
     setState(() {
       _nameController.text = name ?? '';
-      _stamp = stamp;
-      _signature = signature;
+      _signatures = signatures;
+      _stamps = stamps;
       _folderName = folderName;
       _loaded = true;
     });
@@ -61,13 +64,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _folderService.clearFolder();
     if (!mounted) return;
     setState(() => _folderName = null);
-  }
-
-  @override
-  void dispose() {
-    _settings.setName(_nameController.text);
-    _nameController.dispose();
-    super.dispose();
   }
 
   Future<void> _exportBackup() async {
@@ -96,11 +92,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _replaceStamp() async {
-    final bytes = await Navigator.of(context).push<Uint8List>(
+  // ── Marks (signatures / stamps) ────────────────────────────────────────
+
+  Future<void> _addSignature() async {
+    final bytes = await showDrawCanvasSheet(context);
+    if (bytes == null || !mounted) return;
+    await _marksService.add(
+      type: MarkType.signature,
+      name: '${S.of(context)['sign']} ${_signatures.length + 1}',
+      imageBytes: bytes,
+    );
+    await _load();
+  }
+
+  Future<void> _redrawSignature(SavedMark mark) async {
+    final bytes = await showDrawCanvasSheet(context);
+    if (bytes == null || !mounted) return;
+    await _marksService.update(mark.id, imageBytes: bytes);
+    await _load();
+  }
+
+  Future<void> _addStamp() async {
+    final mark = await Navigator.of(context).push<SavedMark>(
       MaterialPageRoute(builder: (_) => const StampSetupScreen()),
     );
-    if (bytes != null) await _load();
+    if (mark == null) return;
+    await _load();
+  }
+
+  Future<void> _editStamp(SavedMark mark) async {
+    if (mark.design != null) {
+      // Designer-made stamp — reopen the designer prefilled.
+      final result = await Navigator.of(context).push<StampDesignResult>(
+        MaterialPageRoute(
+          builder: (_) => StampDesignerScreen(initialDesign: mark.design),
+        ),
+      );
+      if (result == null || !mounted) return;
+      await _marksService.update(mark.id,
+          imageBytes: result.bytes, design: result.design);
+    } else {
+      final updated = await Navigator.of(context).push<SavedMark>(
+        MaterialPageRoute(
+          builder: (_) => StampSetupScreen(editingMark: mark),
+        ),
+      );
+      if (updated == null) return;
+    }
+    await _load();
+  }
+
+  Future<void> _rename(SavedMark mark) async {
+    final s = S.of(context);
+    final controller = TextEditingController(text: mark.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(s['renameMark']),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(fontSize: 18),
+          decoration: InputDecoration(labelText: s['markNameLabel']),
+          onSubmitted: (v) => Navigator.of(dialogContext).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(s['cancel']),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text),
+            child: Text(s['done']),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = newName?.trim();
+    if (trimmed == null || trimmed.isEmpty) return;
+    await _marksService.update(mark.id, name: trimmed);
+    await _load();
+  }
+
+  Future<void> _delete(SavedMark mark) async {
+    final s = S.of(context);
+    await _marksService.delete(mark.id);
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: s['undo'],
+          onPressed: () async {
+            await _marksService.restore(mark);
+            await _load();
+          },
+        ),
+      ));
   }
 
   void _snack(String message) {
@@ -132,32 +225,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onSubmitted: _settings.setName,
                 ),
                 const SizedBox(height: 24),
-                _SectionTitle(s['savedItems']),
-                _SavedItemCard(
-                  icon: Icons.draw_outlined,
-                  title: s['savedSignature'],
-                  bytes: _signature,
-                  emptyLabel: s['notSaved'],
-                  deleteLabel: s['delete'],
-                  onDelete: () async {
-                    await _stampService.removeSignature();
-                    await _load();
-                  },
-                ),
-                const SizedBox(height: 12),
-                _SavedItemCard(
-                  icon: Icons.approval_outlined,
-                  title: s['myStamp'],
-                  bytes: _stamp,
-                  emptyLabel: s['notSaved'],
-                  deleteLabel: s['delete'],
-                  replaceLabel: s['replace'],
-                  onReplace: _replaceStamp,
-                  onDelete: () async {
-                    await _stampService.removeStamp();
-                    await _load();
-                  },
-                ),
+                _SectionTitle(s['savedSignatures']),
+                for (final mark in _signatures) ...[
+                  _MarkTile(
+                    mark: mark,
+                    onRename: () => _rename(mark),
+                    onEdit: () => _redrawSignature(mark),
+                    editIcon: Icons.draw_outlined,
+                    editTooltip: s['redrawSignature'],
+                    onDelete: () => _delete(mark),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _AddMarkTile(label: s['addSignature'], onTap: _addSignature),
+                const SizedBox(height: 24),
+                _SectionTitle(s['savedStamps']),
+                for (final mark in _stamps) ...[
+                  _MarkTile(
+                    mark: mark,
+                    onRename: () => _rename(mark),
+                    onEdit: () => _editStamp(mark),
+                    editIcon: Icons.edit_outlined,
+                    editTooltip: s['edit'],
+                    onDelete: () => _delete(mark),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _AddMarkTile(label: s['addStamp'], onTap: _addStamp),
                 if (DefaultFolderService.isSupported) ...[
                   const SizedBox(height: 24),
                   _SectionTitle(s['defaultFolder']),
@@ -270,29 +364,26 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-class _SavedItemCard extends StatelessWidget {
-  const _SavedItemCard({
-    required this.icon,
-    required this.title,
-    required this.bytes,
-    required this.emptyLabel,
-    required this.deleteLabel,
+class _MarkTile extends StatelessWidget {
+  const _MarkTile({
+    required this.mark,
+    required this.onRename,
+    required this.onEdit,
+    required this.editIcon,
+    required this.editTooltip,
     required this.onDelete,
-    this.replaceLabel,
-    this.onReplace,
   });
 
-  final IconData icon;
-  final String title;
-  final Uint8List? bytes;
-  final String emptyLabel;
-  final String deleteLabel;
-  final String? replaceLabel;
+  final SavedMark mark;
+  final VoidCallback onRename;
+  final VoidCallback onEdit;
+  final IconData editIcon;
+  final String editTooltip;
   final VoidCallback onDelete;
-  final VoidCallback? onReplace;
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: EdgeInsets.zero,
@@ -308,50 +399,70 @@ class _SavedItemCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border.all(color: scheme.outlineVariant),
                 ),
-                // Checkerboard (not a solid fill) when a saved PNG is
-                // shown, so it stays visible that it has no background.
-                child: bytes == null
-                    ? ColoredBox(
-                        color: scheme.surfaceContainerHighest,
-                        child: Icon(icon, color: scheme.outline),
-                      )
-                    : TransparencyCheckerboard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Image.memory(bytes!, fit: BoxFit.contain),
-                        ),
-                      ),
+                child: TransparencyCheckerboard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child:
+                        Image.memory(mark.imageBytes, fit: BoxFit.contain),
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w500)),
-                  if (bytes == null)
-                    Text(emptyLabel,
-                        style: TextStyle(
-                            fontSize: 13, color: scheme.onSurfaceVariant)),
-                ],
+              child: InkWell(
+                onTap: onRename,
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        mark.name,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(Icons.edit, size: 14, color: scheme.outline),
+                  ],
+                ),
               ),
             ),
-            if (onReplace != null)
-              IconButton(
-                tooltip: replaceLabel,
-                onPressed: onReplace,
-                icon: const Icon(Icons.autorenew),
-              ),
-            if (bytes != null)
-              IconButton(
-                tooltip: deleteLabel,
-                onPressed: onDelete,
-                icon: Icon(Icons.delete_outline, color: scheme.error),
-              ),
+            IconButton(
+              tooltip: editTooltip,
+              onPressed: onEdit,
+              icon: Icon(editIcon),
+            ),
+            IconButton(
+              tooltip: s['delete'],
+              onPressed: onDelete,
+              icon: Icon(Icons.delete_outline, color: scheme.error),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AddMarkTile extends StatelessWidget {
+  const _AddMarkTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: const Icon(Icons.add),
+      label: Align(alignment: Alignment.centerLeft, child: Text(label)),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 52),
+        foregroundColor: scheme.primary,
+        alignment: Alignment.centerLeft,
       ),
     );
   }

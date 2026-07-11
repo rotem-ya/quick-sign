@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import 'package:quick_sign/models/placement.dart';
+import 'package:quick_sign/screens/stamp_designer_screen.dart';
 import 'package:quick_sign/services/document_metrics.dart';
 import 'package:quick_sign/services/export_service.dart';
 import 'package:quick_sign/services/import_service.dart';
@@ -279,6 +280,68 @@ void main() {
       final bytes = Uint8List.fromList(doc.saveSync());
       doc.dispose();
       expect(DocumentMetrics.medianTextLineHeightPts(bytes), isNull);
+    });
+  });
+
+  group('StampDesignerScreen.renderStamp', () {
+    Future<int> countOpaquePixels(Uint8List png) async {
+      final decoded = img.decodePng(png)!;
+      var count = 0;
+      for (final pixel in decoded) {
+        if (pixel.a > 10) count++;
+      }
+      return count;
+    }
+
+    test('border=none paints no border, only text', () async {
+      final png = await StampDesignerScreen.renderStamp(
+        lines: ['שם העסק'],
+        color: const ui.Color(0xFF1B4C9C),
+        shape: StampShape.rectangle,
+        border: StampBorder.none,
+      );
+      final decoded = img.decodePng(png)!;
+      // The frame area (near the very edge) must stay fully transparent —
+      // no border stroke drawn there.
+      final corner = decoded.getPixel(2, 2);
+      expect(corner.a, 0);
+      // But there is ink somewhere (the text).
+      expect(await countOpaquePixels(png), greaterThan(0));
+    });
+
+    test('single vs double border draw a different amount of ink', () async {
+      final single = await StampDesignerScreen.renderStamp(
+        lines: const [],
+        color: const ui.Color(0xFF1B4C9C),
+        shape: StampShape.rectangle,
+        border: StampBorder.single,
+      );
+      final double_ = await StampDesignerScreen.renderStamp(
+        lines: const [],
+        color: const ui.Color(0xFF1B4C9C),
+        shape: StampShape.rectangle,
+        border: StampBorder.double_,
+      );
+      // Double border draws an extra inner ring, so it has strictly more
+      // opaque pixels than a single outer border alone.
+      expect(await countOpaquePixels(double_),
+          greaterThan(await countOpaquePixels(single)));
+      expect(await countOpaquePixels(single), greaterThan(0));
+    });
+
+    test('canvas outside the ink is fully transparent — no background fill',
+        () async {
+      final png = await StampDesignerScreen.renderStamp(
+        lines: ['A'],
+        color: const ui.Color(0xFF1B4C9C),
+        shape: StampShape.rectangle,
+        border: StampBorder.double_,
+      );
+      final decoded = img.decodePng(png)!;
+      // Sample a point known to sit between the outer and inner border
+      // rings (never touched by either stroke or by the centered text).
+      final between = decoded.getPixel(decoded.width ~/ 2, 30);
+      expect(between.a, 0);
     });
   });
 

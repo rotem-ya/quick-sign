@@ -7,6 +7,7 @@ import '../services/default_folder_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
+import '../widgets/transparency_checkerboard.dart';
 import 'stamp_setup_screen.dart';
 
 /// Profile, saved signature/stamp management, portable backup, about.
@@ -299,20 +300,28 @@ class _SavedItemCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Container(
-              width: 88,
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: scheme.outlineVariant),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 88,
+                height: 56,
+                decoration: BoxDecoration(
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                // Checkerboard (not a solid fill) when a saved PNG is
+                // shown, so it stays visible that it has no background.
+                child: bytes == null
+                    ? ColoredBox(
+                        color: scheme.surfaceContainerHighest,
+                        child: Icon(icon, color: scheme.outline),
+                      )
+                    : TransparencyCheckerboard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Image.memory(bytes!, fit: BoxFit.contain),
+                        ),
+                      ),
               ),
-              child: bytes != null
-                  ? Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Image.memory(bytes!, fit: BoxFit.contain),
-                    )
-                  : Icon(icon, color: scheme.outline),
             ),
             const SizedBox(width: 12),
             Expanded(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../services/stamp_service.dart';
+import '../widgets/transparency_checkerboard.dart';
 import 'stamp_designer_screen.dart';
 
 /// Stamp setup: photograph the stamp or pick any image / photographed
@@ -142,9 +143,13 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
 
   Widget _buildPreviewArea(S s, ColorScheme scheme) {
     if (_processed != null) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Image.memory(_processed!, fit: BoxFit.contain),
+      // Checkerboard, not a solid fill — makes it visually obvious the
+      // stamp's background was actually removed, not just painted white.
+      return TransparencyCheckerboard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Image.memory(_processed!, fit: BoxFit.contain),
+        ),
       );
     }
     if (_raw != null) {

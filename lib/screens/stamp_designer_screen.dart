@@ -4,19 +4,48 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../widgets/transparency_checkerboard.dart';
 
 /// Built-in digital stamp designer: a classic editable template — up to three
-/// text lines inside a double border, in traditional stamp ink colors.
+/// text lines, an optional border (none / single / double), in traditional
+/// stamp ink colors.
 ///
-/// Pops with a transparent PNG of the rendered stamp.
+/// Pops with a transparent PNG of the rendered stamp — the canvas is never
+/// filled, so there is no background of any color, not even white.
 class StampDesignerScreen extends StatefulWidget {
   const StampDesignerScreen({super.key});
 
   @override
   State<StampDesignerScreen> createState() => _StampDesignerScreenState();
+
+  /// Renders the stamp to a transparent PNG (1200px wide). The canvas is
+  /// never filled with any color, so every pixel outside the ink strokes and
+  /// glyphs stays fully transparent — public and pure, so it's directly
+  /// testable without pumping a widget tree.
+  static Future<Uint8List> renderStamp({
+    required List<String> lines,
+    required Color color,
+    required StampShape shape,
+    required StampBorder border,
+  }) async {
+    const width = 1200.0;
+    const height = 500.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    _StampDesignerScreenState._paintStamp(
+        canvas, const Size(width, height), lines, color, shape, border);
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width.toInt(), height.toInt());
+    picture.dispose();
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return data!.buffer.asUint8List();
+  }
 }
 
 enum StampShape { rectangle, ellipse }
+
+enum StampBorder { none, single, double_ }
 
 class _StampDesignerScreenState extends State<StampDesignerScreen> {
   final _line1 = TextEditingController();
@@ -32,6 +61,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
 
   Color _color = _inkColors.first;
   StampShape _shape = StampShape.rectangle;
+  StampBorder _border = StampBorder.double_;
 
   @override
   void dispose() {
@@ -47,32 +77,14 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
       ];
 
   Future<void> _save() async {
-    final bytes = await renderStamp(
+    final bytes = await StampDesignerScreen.renderStamp(
       lines: _lines,
       color: _color,
       shape: _shape,
+      border: _border,
     );
     if (!mounted) return;
     Navigator.of(context).pop(bytes);
-  }
-
-  /// Renders the stamp to a transparent PNG (1200px wide).
-  static Future<Uint8List> renderStamp({
-    required List<String> lines,
-    required Color color,
-    required StampShape shape,
-  }) async {
-    const width = 1200.0;
-    const height = 500.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    _paintStamp(canvas, const Size(width, height), lines, color, shape);
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(width.toInt(), height.toInt());
-    picture.dispose();
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    return data!.buffer.asUint8List();
   }
 
   static void _paintStamp(
@@ -81,6 +93,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
     List<String> lines,
     Color color,
     StampShape shape,
+    StampBorder border,
   ) {
     final stroke = Paint()
       ..style = PaintingStyle.stroke
@@ -98,16 +111,27 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
       size.height - 2 * stroke.strokeWidth,
     );
     final inner = outer.deflate(size.height * 0.055);
+    // Text still lays out inside where the inner border would sit, whether
+    // or not it's actually drawn, so the layout stays stable across border
+    // styles as the user switches between them.
+    final textBounds = border == StampBorder.none ? outer.deflate(size.height * 0.04) : inner;
 
-    switch (shape) {
-      case StampShape.rectangle:
-        final r = Radius.circular(size.height * 0.12);
-        canvas.drawRRect(RRect.fromRectAndRadius(outer, r), stroke);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(inner, Radius.circular(r.x * 0.8)), thin);
-      case StampShape.ellipse:
-        canvas.drawOval(outer, stroke);
-        canvas.drawOval(inner, thin);
+    if (border != StampBorder.none) {
+      switch (shape) {
+        case StampShape.rectangle:
+          final r = Radius.circular(size.height * 0.12);
+          canvas.drawRRect(RRect.fromRectAndRadius(outer, r), stroke);
+          if (border == StampBorder.double_) {
+            canvas.drawRRect(
+                RRect.fromRectAndRadius(inner, Radius.circular(r.x * 0.8)),
+                thin);
+          }
+        case StampShape.ellipse:
+          canvas.drawOval(outer, stroke);
+          if (border == StampBorder.double_) {
+            canvas.drawOval(inner, thin);
+          }
+      }
     }
 
     if (lines.isEmpty) return;
@@ -133,7 +157,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
         textAlign: TextAlign.center,
         maxLines: 1,
         ellipsis: '…',
-      )..layout(maxWidth: inner.width * 0.86));
+      )..layout(maxWidth: textBounds.width * 0.86));
     }
     const gapFactor = 0.035;
     final totalHeight = painters.fold<double>(0, (sum, p) => sum + p.height) +
@@ -157,20 +181,27 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Live preview.
-            Container(
-              height: 150,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: CustomPaint(
-                painter: _StampPreviewPainter(
-                  lines: _lines,
-                  color: _color,
-                  shape: _shape,
+            // Live preview — a checkerboard, not a solid color, so it's
+            // visually obvious the stamp has no background at all.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                height: 150,
+                decoration: BoxDecoration(
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: TransparencyCheckerboard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: CustomPaint(
+                      painter: _StampPreviewPainter(
+                        lines: _lines,
+                        color: _color,
+                        shape: _shape,
+                        border: _border,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -240,32 +271,60 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Text('${s['shape']}:',
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(width: 10),
-                SegmentedButton<StampShape>(
-                  segments: [
-                    ButtonSegment(
-                      value: StampShape.rectangle,
-                      icon: const Icon(Icons.crop_16_9),
-                      label: Text(s['shapeRect']),
-                    ),
-                    ButtonSegment(
-                      value: StampShape.ellipse,
-                      icon: const Icon(Icons.circle_outlined),
-                      label: Text(s['shapeEllipse']),
-                    ),
-                  ],
-                  selected: {_shape},
-                  onSelectionChanged: (v) =>
-                      setState(() => _shape = v.first),
+            const SizedBox(height: 16),
+            Text('${s['borderStyle']}:',
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            SegmentedButton<StampBorder>(
+              segments: [
+                ButtonSegment(
+                  value: StampBorder.none,
+                  icon: const Icon(Icons.crop_free),
+                  label: Text(s['borderNone']),
+                ),
+                ButtonSegment(
+                  value: StampBorder.single,
+                  icon: const Icon(Icons.rectangle_outlined),
+                  label: Text(s['borderSingle']),
+                ),
+                ButtonSegment(
+                  value: StampBorder.double_,
+                  icon: const Icon(Icons.filter_none),
+                  label: Text(s['borderDouble']),
                 ),
               ],
+              selected: {_border},
+              onSelectionChanged: (v) => setState(() => _border = v.first),
             ),
+            if (_border != StampBorder.none) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Text('${s['shape']}:',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 10),
+                  SegmentedButton<StampShape>(
+                    segments: [
+                      ButtonSegment(
+                        value: StampShape.rectangle,
+                        icon: const Icon(Icons.crop_16_9),
+                        label: Text(s['shapeRect']),
+                      ),
+                      ButtonSegment(
+                        value: StampShape.ellipse,
+                        icon: const Icon(Icons.circle_outlined),
+                        label: Text(s['shapeEllipse']),
+                      ),
+                    ],
+                    selected: {_shape},
+                    onSelectionChanged: (v) =>
+                        setState(() => _shape = v.first),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 22),
             FilledButton.icon(
               onPressed: _lines.isEmpty ? null : _save,
@@ -285,11 +344,13 @@ class _StampPreviewPainter extends CustomPainter {
     required this.lines,
     required this.color,
     required this.shape,
+    required this.border,
   });
 
   final List<String> lines;
   final Color color;
   final StampShape shape;
+  final StampBorder border;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -303,7 +364,7 @@ class _StampPreviewPainter extends CustomPainter {
     canvas.save();
     canvas.translate((size.width - w) / 2, (size.height - h) / 2);
     _StampDesignerScreenState._paintStamp(
-        canvas, Size(w, h), lines, color, shape);
+        canvas, Size(w, h), lines, color, shape, border);
     canvas.restore();
   }
 
@@ -311,5 +372,6 @@ class _StampPreviewPainter extends CustomPainter {
   bool shouldRepaint(_StampPreviewPainter old) =>
       !listEquals(old.lines, lines) ||
       old.color != color ||
-      old.shape != shape;
+      old.shape != shape ||
+      old.border != border;
 }

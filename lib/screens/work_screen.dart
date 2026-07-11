@@ -497,7 +497,11 @@ class _WorkScreenState extends State<WorkScreen> {
     final session = _session;
     if (session == null || _busy) return;
     if (session.placements.value.isEmpty) {
-      _snack(S.of(context)['nothingToExport']);
+      // Nothing to flatten yet — this is also how "just save/share the
+      // document as opened" works: the same sheet (Share / quick save to
+      // the default folder / Save to… / Print), just skipping the
+      // permanent-embedding step since nothing is being embedded.
+      await _showSendSheet(session.pdfBytes, session.fileName);
       return;
     }
     if (!await _confirmPermanentEmbedding()) return;
@@ -802,24 +806,42 @@ class _WorkScreenState extends State<WorkScreen> {
                   height: math.max(docHeight, constraints.maxHeight),
                   child: Stack(
                     children: [
-                      for (var i = 0; i < session.pageCount; i++)
-                        Positioned(
-                          left: _pagePadding,
-                          top: tops[i],
-                          width: contentWidth,
-                          height: heights[i],
-                          child: _PageItem(
-                            renderService: _renderService,
-                            pageIndex: i,
-                            width: contentWidth,
-                            height: heights[i],
-                            onMarkStart: (local, size) =>
-                                _onMarkStart(i, local, size),
-                            onMarkUpdate: (local, size) =>
-                                _onMarkUpdate(i, local, size),
-                            onMarkEnd: () => _onMarkEnd(i),
-                          ),
-                        ),
+                      // Only pages inside the viewport (+ a preload buffer)
+                      // actually render — a 53-page CAD-drawing PDF used to
+                      // kick off all 53 renders the instant it opened. Pages
+                      // outside the range show a cheap blank placeholder and
+                      // cost nothing until they're scrolled into view.
+                      AnimatedBuilder(
+                        animation: _transformation,
+                        builder: (context, _) {
+                          final visible = _visiblePageIndices(
+                              tops, heights, constraints.maxHeight);
+                          return Stack(
+                            children: [
+                              for (var i = 0; i < session.pageCount; i++)
+                                Positioned(
+                                  left: _pagePadding,
+                                  top: tops[i],
+                                  width: contentWidth,
+                                  height: heights[i],
+                                  child: visible.contains(i)
+                                      ? _PageItem(
+                                          renderService: _renderService,
+                                          pageIndex: i,
+                                          width: contentWidth,
+                                          height: heights[i],
+                                          onMarkStart: (local, size) =>
+                                              _onMarkStart(i, local, size),
+                                          onMarkUpdate: (local, size) =>
+                                              _onMarkUpdate(i, local, size),
+                                          onMarkEnd: () => _onMarkEnd(i),
+                                        )
+                                      : const _PagePlaceholder(),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                       // Live selection rectangle while long-press marking.
                       if (_markPageIndex != null &&
                           _markStartN != null &&
@@ -956,6 +978,45 @@ class _WorkScreenState extends State<WorkScreen> {
       if (centerDocY < tops[i] + heights[i] + _pageGap / 2) return i;
     }
     return tops.length - 1;
+  }
+
+  /// Pages that overlap the current viewport, expanded by one screen's worth
+  /// of preload buffer above and below so scrolling stays smooth. Only these
+  /// pages are actually rendered — the rest cost nothing until they scroll
+  /// into range, which is what keeps a 50+ page document fast to open.
+  Set<int> _visiblePageIndices(
+      List<double> tops, List<double> heights, double viewportHeight) {
+    final matrix = _transformation.value;
+    final scale = matrix.getMaxScaleOnAxis();
+    final translationY = matrix.getTranslation().y;
+    final visibleTop = (0 - translationY) / scale;
+    final visibleBottom = (viewportHeight - translationY) / scale;
+    final buffer = viewportHeight / scale;
+    final rangeTop = visibleTop - buffer;
+    final rangeBottom = visibleBottom + buffer;
+
+    final result = <int>{};
+    for (var i = 0; i < tops.length; i++) {
+      final pageTop = tops[i];
+      final pageBottom = tops[i] + heights[i];
+      if (pageBottom >= rangeTop && pageTop <= rangeBottom) {
+        result.add(i);
+      }
+    }
+    return result;
+  }
+}
+
+/// Cheap stand-in for a page that is outside the render range — a blank
+/// sheet with no image decode, no isolate call, nothing async.
+class _PagePlaceholder extends StatelessWidget {
+  const _PagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(color: Colors.white),
+    );
   }
 }
 

@@ -9,12 +9,13 @@ import 'package:intl/intl.dart';
 import '../l10n/strings.dart';
 import '../models/document_session.dart';
 import '../models/placement.dart';
+import '../services/default_folder_service.dart';
 import '../services/export_service.dart';
+import '../services/history_service.dart';
 import '../services/import_service.dart';
 import '../services/pdf_render_service.dart';
 import '../services/print_service.dart';
 import '../services/settings_service.dart';
-import '../services/default_folder_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
 import '../widgets/ad_banner.dart';
@@ -22,6 +23,7 @@ import '../widgets/bottom_toolbar.dart';
 import '../widgets/note_sheet.dart';
 import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
+import 'history_screen.dart';
 import 'settings_screen.dart';
 import 'stamp_setup_screen.dart';
 
@@ -59,6 +61,7 @@ class _WorkScreenState extends State<WorkScreen> {
   final DefaultFolderService _folderService = DefaultFolderService();
   final PrintService _printService = PrintService();
   final SettingsService _settingsService = SettingsService();
+  final HistoryService _historyService = HistoryService();
 
   final TransformationController _transformation = TransformationController();
 
@@ -512,6 +515,15 @@ class _WorkScreenState extends State<WorkScreen> {
         session: session,
         renderService: _renderService,
       );
+      // Permanent local copy, independent of the transient share/print file
+      // — kept in History until the user deletes it themselves.
+      if (HistoryService.isSupported) {
+        unawaited(_historyService.record(
+          bytes: signedBytes,
+          fileName: session.signedFileName,
+          pageCount: session.pageCount,
+        ));
+      }
       if (!mounted) return;
       setState(() => _busy = false);
       await _showSendSheet(signedBytes, session.signedFileName);
@@ -670,6 +682,18 @@ class _WorkScreenState extends State<WorkScreen> {
               iconSize: 26,
               onPressed: _busy ? null : _pickAndOpen,
               icon: const Icon(Icons.note_add_outlined),
+            ),
+          if (HistoryService.isSupported)
+            IconButton(
+              tooltip: s['history'],
+              iconSize: 26,
+              onPressed: _busy
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const HistoryScreen()),
+                      ),
+              icon: const Icon(Icons.history),
             ),
           IconButton(
             tooltip: s['settings'],

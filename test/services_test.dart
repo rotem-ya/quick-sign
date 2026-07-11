@@ -1,16 +1,30 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import 'package:quick_sign/models/history_entry.dart';
 import 'package:quick_sign/models/placement.dart';
 import 'package:quick_sign/screens/stamp_designer_screen.dart';
 import 'package:quick_sign/services/document_metrics.dart';
 import 'package:quick_sign/services/export_service.dart';
+import 'package:quick_sign/services/history_service.dart';
 import 'package:quick_sign/services/import_service.dart';
 import 'package:quick_sign/services/stamp_service.dart';
+
+class _FakePathProviderPlatform extends PathProviderPlatform {
+  _FakePathProviderPlatform(this.documentsPath);
+
+  final String documentsPath;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => documentsPath;
+}
 
 Uint8List _pngOf(int width, int height, img.ColorRgba8 color) {
   final image = img.Image(width: width, height: height, numChannels: 4);
@@ -342,6 +356,119 @@ void main() {
       // rings (never touched by either stroke or by the centered text).
       final between = decoded.getPixel(decoded.width ~/ 2, 30);
       expect(between.a, 0);
+    });
+  });
+
+  group('HistoryEntry.toJson/fromJson', () {
+    test('round-trips all fields', () {
+      final entry = HistoryEntry(
+        id: '123',
+        fileName: 'contract-signed.pdf',
+        savedAt: DateTime.utc(2026, 1, 15, 10, 30),
+        pageCount: 3,
+        sizeBytes: 45000,
+        filePath: '/tmp/history/123-contract-signed.pdf',
+      );
+      final restored = HistoryEntry.fromJson(entry.toJson())!;
+      expect(restored.id, entry.id);
+      expect(restored.fileName, entry.fileName);
+      expect(restored.savedAt, entry.savedAt);
+      expect(restored.pageCount, entry.pageCount);
+      expect(restored.sizeBytes, entry.sizeBytes);
+      expect(restored.filePath, entry.filePath);
+    });
+
+    test('returns null instead of throwing on malformed data', () {
+      expect(HistoryEntry.fromJson({'id': 'only-id'}), isNull);
+    });
+  });
+
+  group('HistoryService', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('quicksign_history_');
+      PathProviderPlatform.instance = _FakePathProviderPlatform(tempDir.path);
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('record → list round-trips a permanent copy, newest first',
+        () async {
+      final service = HistoryService();
+      final first = await service.record(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        fileName: 'a-signed.pdf',
+        pageCount: 1,
+      );
+      final second = await service.record(
+        bytes: Uint8List.fromList([4, 5, 6, 7]),
+        fileName: 'b-signed.pdf',
+        pageCount: 2,
+      );
+
+      final entries = await service.list();
+      expect(entries.map((e) => e.id), [second.id, first.id]);
+      expect(entries.first.fileName, 'b-signed.pdf');
+      expect(entries.first.sizeBytes, 4);
+      expect(await File(first.filePath).exists(), isTrue);
+    });
+
+    test('readBytes returns exactly what was recorded', () async {
+      final service = HistoryService();
+      final bytes = Uint8List.fromList(List.generate(50, (i) => i));
+      final entry = await service.record(
+        bytes: bytes,
+        fileName: 'doc.pdf',
+        pageCount: 1,
+      );
+      expect(await service.readBytes(entry), bytes);
+    });
+
+    test('delete removes the file and the index entry', () async {
+      final service = HistoryService();
+      final entry = await service.record(
+        bytes: Uint8List.fromList([9, 9, 9]),
+        fileName: 'doc.pdf',
+        pageCount: 1,
+      );
+      await service.delete(entry);
+      expect(await File(entry.filePath).exists(), isFalse);
+      expect(await service.list(), isEmpty);
+    });
+
+    test('restore brings a deleted entry back with its bytes', () async {
+      final service = HistoryService();
+      final bytes = Uint8List.fromList([7, 7, 7]);
+      final entry = await service.record(
+        bytes: bytes,
+        fileName: 'doc.pdf',
+        pageCount: 1,
+      );
+      await service.delete(entry);
+      expect(await service.list(), isEmpty);
+
+      await service.restore(entry, bytes);
+      final entries = await service.list();
+      expect(entries.single.id, entry.id);
+      expect(await service.readBytes(entry), bytes);
+    });
+
+    test('list prunes entries whose file vanished outside the app',
+        () async {
+      final service = HistoryService();
+      final entry = await service.record(
+        bytes: Uint8List.fromList([1]),
+        fileName: 'doc.pdf',
+        pageCount: 1,
+      );
+      await File(entry.filePath).delete(); // simulate storage cleared
+      expect(await service.list(), isEmpty);
     });
   });
 

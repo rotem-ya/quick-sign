@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -628,6 +629,66 @@ void main() {
       final edge = decoded.getPixel(2, 50);
       expect(edge.r, greaterThan(150));
       expect(edge.b, lessThan(100));
+    });
+  });
+
+  group('StampService.addRandomImperfections', () {
+    // A realistic saved stamp: transparent background with an opaque ink
+    // ring, like the output of removeWhiteBackground / the stamp designer.
+    Uint8List realisticStamp() {
+      final source = img.Image(width: 120, height: 80, numChannels: 4);
+      img.fill(source, color: img.ColorRgba8(0, 0, 0, 0));
+      img.fillRect(
+        source,
+        x1: 40,
+        y1: 25,
+        x2: 79,
+        y2: 54,
+        color: img.ColorRgba8(160, 20, 20, 255),
+      );
+      return Uint8List.fromList(img.encodePng(source));
+    }
+
+    test('preserves image dimensions', () {
+      final stamp = realisticStamp();
+      final out = StampService.addRandomImperfections(stamp, math.Random(1));
+      final decoded = img.decodePng(out)!;
+      expect(decoded.width, 120);
+      expect(decoded.height, 80);
+    });
+
+    test('changes only a small, subtle fraction of pixels', () {
+      final stamp = realisticStamp();
+      final before = img.decodePng(stamp)!;
+      final out = StampService.addRandomImperfections(stamp, math.Random(2));
+      final after = img.decodePng(out)!;
+
+      var changed = 0;
+      var maxAlphaDelta = 0;
+      for (var y = 0; y < before.height; y++) {
+        for (var x = 0; x < before.width; x++) {
+          final a = before.getPixel(x, y);
+          final b = after.getPixel(x, y);
+          final delta = (a.a.toInt() - b.a.toInt()).abs();
+          if (delta > 0) {
+            changed++;
+            if (delta > maxAlphaDelta) maxAlphaDelta = delta;
+          }
+        }
+      }
+
+      expect(changed, greaterThan(0));
+      expect(changed, lessThan(before.width * before.height));
+      // "Very very light" — smudges should barely raise alpha on
+      // previously-transparent background pixels.
+      expect(maxAlphaDelta, lessThan(15));
+    });
+
+    test('is deterministic for a given seeded Random', () {
+      final stamp = realisticStamp();
+      final outA = StampService.addRandomImperfections(stamp, math.Random(42));
+      final outB = StampService.addRandomImperfections(stamp, math.Random(42));
+      expect(outA, equals(outB));
     });
   });
 

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -151,14 +152,89 @@ class StampService {
     }
     final x = (request.left * source.width).round().clamp(0, source.width - 1);
     final y = (request.top * source.height).round().clamp(0, source.height - 1);
-    final w =
-        ((request.right - request.left) * source.width).round().clamp(1, source.width - x);
-    final h = ((request.bottom - request.top) * source.height)
-        .round()
-        .clamp(1, source.height - y);
+    final w = ((request.right - request.left) * source.width).round().clamp(
+      1,
+      source.width - x,
+    );
+    final h = ((request.bottom - request.top) * source.height).round().clamp(
+      1,
+      source.height - y,
+    );
     final cropped = img.copyCrop(source, x: x, y: y, width: w, height: h);
-    return removeWhiteBackground(
-        Uint8List.fromList(img.encodePng(cropped)));
+    return removeWhiteBackground(Uint8List.fromList(img.encodePng(cropped)));
+  }
+
+  /// Very light, randomized ink imperfections — 1-3 tiny, soft, tint-
+  /// matched smudges placed at random — so each placement of the same
+  /// saved stamp looks like its own individual real-world impression
+  /// instead of a perfectly identical digital copy. Deliberately subtle:
+  /// only ever applied to stamps, never signatures.
+  static Uint8List addRandomImperfections(
+    Uint8List stampPng,
+    math.Random random,
+  ) {
+    final source = img.decodeImage(stampPng);
+    if (source == null) return stampPng;
+    final rgba = source.convert(numChannels: 4);
+    final inkColor = _dominantInkColor(rgba);
+
+    final smudgeCount = 1 + random.nextInt(3);
+    for (var i = 0; i < smudgeCount; i++) {
+      final cx = random.nextInt(rgba.width);
+      final cy = random.nextInt(rgba.height);
+      final radius = 2.0 + random.nextDouble() * 4;
+      // Very, very light: a handful of alpha levels out of 255.
+      final peakAlpha = 4 + random.nextInt(10);
+      _paintSoftBlob(rgba, cx, cy, radius, inkColor, peakAlpha);
+    }
+    return Uint8List.fromList(img.encodePng(rgba));
+  }
+
+  /// Average color of the stamp's own ink, so smudges tint-match it
+  /// instead of reading as a foreign gray smear.
+  static img.ColorRgb8 _dominantInkColor(img.Image rgba) {
+    var r = 0, g = 0, b = 0, n = 0;
+    for (final p in rgba) {
+      if (p.a > 120) {
+        r += p.r.toInt();
+        g += p.g.toInt();
+        b += p.b.toInt();
+        n++;
+      }
+    }
+    if (n == 0) return img.ColorRgb8(40, 40, 40);
+    return img.ColorRgb8(r ~/ n, g ~/ n, b ~/ n);
+  }
+
+  static void _paintSoftBlob(
+    img.Image image,
+    int cx,
+    int cy,
+    double radius,
+    img.ColorRgb8 color,
+    int peakAlpha,
+  ) {
+    final r = radius.ceil();
+    for (var dy = -r; dy <= r; dy++) {
+      final y = cy + dy;
+      if (y < 0 || y >= image.height) continue;
+      for (var dx = -r; dx <= r; dx++) {
+        final x = cx + dx;
+        if (x < 0 || x >= image.width) continue;
+        final dist = math.sqrt((dx * dx + dy * dy).toDouble());
+        if (dist > radius) continue;
+        final addAlpha = (peakAlpha * (1 - dist / radius)).round();
+        if (addAlpha <= 0) continue;
+        final existing = image.getPixel(x, y);
+        final existingA = existing.a.toInt();
+        final newA = (existingA + addAlpha).clamp(0, 255);
+        final mix = addAlpha / newA.clamp(1, 255);
+        final newR = (existing.r * (1 - mix) + color.r * mix).round();
+        final newG = (existing.g * (1 - mix) + color.g * mix).round();
+        final newB = (existing.b * (1 - mix) + color.b * mix).round();
+        image.setPixelRgba(x, y, newR, newG, newB, newA);
+      }
+    }
   }
 
   /// Draws the signature centered on top of the stamp (ink over stamp, like
@@ -173,7 +249,8 @@ class StampService {
     final w = stamp.width.toDouble();
     final h = stamp.height.toDouble();
     // Fit the signature inside the stamp bounds, slightly inset.
-    final fit = 0.92 *
+    final fit =
+        0.92 *
         (w / signature.width < h / signature.height
             ? w / signature.width
             : h / signature.height);
@@ -187,9 +264,16 @@ class StampService {
     canvas.drawImageRect(
       signature,
       ui.Rect.fromLTWH(
-          0, 0, signature.width.toDouble(), signature.height.toDouble()),
+        0,
+        0,
+        signature.width.toDouble(),
+        signature.height.toDouble(),
+      ),
       ui.Rect.fromCenter(
-          center: ui.Offset(w / 2, h / 2), width: sw, height: sh),
+        center: ui.Offset(w / 2, h / 2),
+        width: sw,
+        height: sh,
+      ),
       paint,
     );
 
@@ -239,8 +323,10 @@ class StampService {
     await prefs.setString(prefKey, base64Encode(bytes));
   }
 
-  Future<Uint8List?> _readPng(String prefKey,
-      {required String legacyPathKey}) async {
+  Future<Uint8List?> _readPng(
+    String prefKey, {
+    required String legacyPathKey,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = prefs.getString(prefKey);
     if (encoded != null) {

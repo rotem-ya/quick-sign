@@ -21,6 +21,7 @@ import '../services/pdf_render_service.dart';
 import '../services/print_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
+import '../services/stamp_service.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/bottom_toolbar.dart';
 import '../widgets/drag_drop_stub.dart'
@@ -49,12 +50,24 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   static const double _pagePadding = 12;
   static const double _pageGap = 10;
 
-  /// Standard placed sizes relative to the page width — a signature lands at
-  /// a fixed, real-world standard size (~4cm on A4) and is resizable after.
+  /// Standard placed sizes relative to the page width, calibrated for a
+  /// standard A4 page (595pt) — a signature lands at a fixed, real-world
+  /// standard size (~4cm on A4) and is resizable after. Used as-is only
+  /// when the document's text height can't be measured; otherwise
+  /// [_markWidthFractionFor] scales these to the document's actual scale.
   static const double _signatureWidthFraction = 0.22;
   static const double _stampWidthFraction = 0.2;
   static const double _comboWidthFraction = 0.24;
   static const double _noteWidthFraction = 0.5;
+
+  /// Reference page width (A4, pt) and body-line-height (pt) the fractions
+  /// above were calibrated against.
+  static const double _referencePageWidthPts = 595.0;
+  static const double _referenceLineHeightPts = 13.0;
+
+  /// Small, natural-looking crookedness for a stamped impression — not a
+  /// perfectly axis-aligned digital sticker.
+  static const double _maxStampRotationDegrees = 6.0;
 
   /// Note text follows the document's measured text-line height.
   static const double _noteLineHeights = 1.1;
@@ -287,6 +300,24 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   // ── Placement ─────────────────────────────────────────────────────────────
 
+  /// Scales a standard-calibrated fraction (signature/stamp/combo) to the
+  /// document's actual scale, using its measured body-text height as the
+  /// cue — the same idea as [_noteWidthFractionFor], generalized. A large-
+  /// format drawing with big text gets a proportionally bigger signature
+  /// instead of always the same fixed sliver of page width; a dense small-
+  /// print contract gets a smaller one. Falls back to [baseFraction]
+  /// unchanged when the document has no extractable text to measure.
+  double _markWidthFractionFor(int pageIndex, double baseFraction) {
+    final session = _session!;
+    final lineH = session.bodyTextHeightPts;
+    if (lineH == null || lineH <= 0) return baseFraction;
+    final pageWidth = session.pageSizes[pageIndex].width;
+    final scale =
+        (lineH / _referenceLineHeightPts) *
+        (_referencePageWidthPts / pageWidth);
+    return (baseFraction * scale).clamp(0.08, 0.6);
+  }
+
   double _noteWidthFractionFor(int pageIndex) {
     final session = _session!;
     final lineH = session.bodyTextHeightPts;
@@ -343,8 +374,20 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       ny: ny,
       widthFraction:
           widthOverride ??
-          (isCombo ? _comboWidthFraction : _signatureWidthFraction),
+          _markWidthFractionFor(
+            pageIndex,
+            isCombo ? _comboWidthFraction : _signatureWidthFraction,
+          ),
     );
+  }
+
+  /// Small random tilt, in radians — only ever applied to stamps, never
+  /// signatures, so each impression looks hand-stamped instead of a
+  /// perfectly axis-aligned digital sticker.
+  double _randomStampRotation() {
+    final degrees =
+        (math.Random().nextDouble() * 2 - 1) * _maxStampRotationDegrees;
+    return degrees * math.pi / 180;
   }
 
   Future<void> _placeStamp(
@@ -357,31 +400,38 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     final stamps = await _marksService.list(type: MarkType.stamp);
     final defaultStamp = await _marksService.getDefault(MarkType.stamp);
     if (!mounted) return;
-    Uint8List? bytes = defaultStamp?.imageBytes;
-    if (bytes == null) {
+    Uint8List? cleanBytes = defaultStamp?.imageBytes;
+    if (cleanBytes == null) {
       if (stamps.isEmpty) {
         _promptAddMark(MarkType.stamp);
         return;
       } else if (stamps.length == 1) {
-        bytes = stamps.single.imageBytes;
+        cleanBytes = stamps.single.imageBytes;
       } else {
         final result = await showMarkPickerSheet(context, marks: stamps);
         if (result == null || !mounted) return;
-        bytes = result.mark.imageBytes;
+        cleanBytes = result.mark.imageBytes;
       }
     }
+    final widthFraction =
+        widthOverride ?? _markWidthFractionFor(pageIndex, _stampWidthFraction);
     final placed = await _addImagePlacement(
       type: PlacementType.stamp,
-      bytes: bytes,
+      bytes: StampService.addRandomImperfections(cleanBytes, math.Random()),
       pages: [pageIndex],
       nx: nx,
       ny: ny,
-      widthFraction: widthOverride ?? _stampWidthFraction,
+      widthFraction: widthFraction,
     );
-    // One tap replicates the stamp at the same spot on every page.
+    if (placed.isNotEmpty) placed.first.rotation = _randomStampRotation();
+
+    // One tap replicates the stamp at the same spot on every page — each
+    // copy gets its own independent random tilt/imperfections, like
+    // genuinely separate impressions of the same physical stamp.
     if (session.pageCount > 1 && placed.isNotEmpty && mounted) {
       final s = S.of(context);
       final original = placed.first;
+      final baseBytes = cleanBytes;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -407,9 +457,12 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                       ny: original.ny,
                       widthFraction: original.widthFraction,
                       aspectRatio: original.aspectRatio,
-                      imageBytes: original.imageBytes,
+                      imageBytes: StampService.addRandomImperfections(
+                        baseBytes,
+                        math.Random(),
+                      ),
                       groupId: gid,
-                    ),
+                    )..rotation = _randomStampRotation(),
                   );
                 }
                 session.addAll(copies);

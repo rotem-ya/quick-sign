@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -18,6 +19,7 @@ import 'package:quick_sign/services/export_service.dart';
 import 'package:quick_sign/services/history_service.dart';
 import 'package:quick_sign/services/import_service.dart';
 import 'package:quick_sign/services/marks_service.dart';
+import 'package:quick_sign/services/settings_service.dart';
 import 'package:quick_sign/services/stamp_service.dart';
 
 class _FakePathProviderPlatform extends PathProviderPlatform {
@@ -836,6 +838,114 @@ void main() {
 
       await service.delete(signature.id);
       expect(await service.getDefault(MarkType.signature), isNull);
+    });
+  });
+
+  group('SettingsService.exportBundle/importBundle', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test(
+      'round-trips the name and every saved mark, including defaults',
+      () async {
+        final settings = SettingsService();
+        final marks = MarksService();
+        await settings.setName('רותם');
+        final signature = await marks.add(
+          type: MarkType.signature,
+          name: 'חתימה 1',
+          imageBytes: _pngOf(10, 10, img.ColorRgba8(1, 1, 1, 255)),
+        );
+        await marks.add(
+          type: MarkType.stamp,
+          name: 'חותמת 1',
+          imageBytes: _pngOf(10, 10, img.ColorRgba8(2, 2, 2, 255)),
+        );
+        await marks.setDefault(MarkType.signature, signature.id);
+
+        final bundle = await settings.exportBundle();
+
+        // A clean device: nothing saved yet.
+        SharedPreferences.setMockInitialValues({});
+        final freshSettings = SettingsService();
+        final freshMarks = MarksService();
+        await freshSettings.importBundle(bundle);
+
+        expect(await freshSettings.getName(), 'רותם');
+        final signatures = await freshMarks.list(type: MarkType.signature);
+        final stamps = await freshMarks.list(type: MarkType.stamp);
+        expect(signatures, hasLength(1));
+        expect(signatures.single.name, 'חתימה 1');
+        expect(stamps, hasLength(1));
+        expect(stamps.single.name, 'חותמת 1');
+        // The default carried over, remapped to the freshly assigned id.
+        final defaultSignature = await freshMarks.getDefault(
+          MarkType.signature,
+        );
+        expect(defaultSignature?.id, signatures.single.id);
+      },
+    );
+
+    test(
+      'importing the same bundle twice adds independent copies, not a collision',
+      () async {
+        final settings = SettingsService();
+        final marks = MarksService();
+        await marks.add(
+          type: MarkType.signature,
+          name: 'חתימה',
+          imageBytes: _pngOf(10, 10, img.ColorRgba8(1, 1, 1, 255)),
+        );
+        final bundle = await settings.exportBundle();
+
+        await settings.importBundle(bundle);
+        await settings.importBundle(bundle);
+
+        final signatures = await marks.list(type: MarkType.signature);
+        expect(signatures, hasLength(3)); // original + 2 imports
+        expect(signatures.map((m) => m.id).toSet(), hasLength(3));
+      },
+    );
+
+    test(
+      'restores a legacy (version 1) singular stamp/signature bundle',
+      () async {
+        final legacyBundle = Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'app': 'quicksign',
+              'version': 1,
+              'name': 'ישן',
+              'stamp': base64Encode(
+                _pngOf(10, 10, img.ColorRgba8(3, 3, 3, 255)),
+              ),
+              'signature': base64Encode(
+                _pngOf(10, 10, img.ColorRgba8(4, 4, 4, 255)),
+              ),
+            }),
+          ),
+        );
+        final settings = SettingsService();
+        final marks = MarksService();
+
+        await settings.importBundle(legacyBundle);
+
+        expect(await settings.getName(), 'ישן');
+        expect(await marks.list(type: MarkType.signature), hasLength(1));
+        expect(await marks.list(type: MarkType.stamp), hasLength(1));
+      },
+    );
+
+    test('rejects a file that is not a QuickSign backup', () async {
+      final settings = SettingsService();
+      final notABackup = Uint8List.fromList(
+        utf8.encode(jsonEncode({'hello': 'world'})),
+      );
+      expect(
+        () => settings.importBundle(notABackup),
+        throwsA(isA<FormatException>()),
+      );
     });
   });
 }

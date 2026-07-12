@@ -87,6 +87,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (saved && mounted) _snack(s['backupSaved']);
   }
 
+  /// One tap, no dialog — writes straight into the already-chosen default
+  /// folder (Drive/OneDrive/Dropbox via SAF, see [DefaultFolderService]).
+  /// This is how a backup gets to the user's own cloud without any account
+  /// or OAuth: the same mechanism already used for signed documents.
+  Future<void> _quickBackupToFolder() async {
+    final s = S.of(context);
+    await _settings.setName(_nameController.text);
+    final bundle = await _settings.exportBundle();
+    final ok = await _folderService.saveFile(bundle, 'quicksign-backup.json');
+    if (!mounted) return;
+    _snack(
+      ok ? '${s['savedToDefaultFolder']} — $_folderName' : s['backupError'],
+    );
+  }
+
   Future<void> _importBackup() async {
     final s = S.of(context);
     final result = await FilePicker.platform.pickFiles(
@@ -397,6 +412,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   margin: EdgeInsets.zero,
                   child: Column(
                     children: [
+                      if (DefaultFolderService.isSupported &&
+                          _folderName != null) ...[
+                        ListTile(
+                          leading: Icon(
+                            Icons.cloud_upload_outlined,
+                            color: scheme.primary,
+                          ),
+                          title: Text(s['quickBackup']),
+                          subtitle: Text(
+                            '${s['quickBackupSub']} — $_folderName',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          onTap: _quickBackupToFolder,
+                        ),
+                        const Divider(height: 1),
+                      ],
                       ListTile(
                         leading: const Icon(Icons.upload_file_outlined),
                         title: Text(s['exportSettings']),

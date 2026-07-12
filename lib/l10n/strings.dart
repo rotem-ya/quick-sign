@@ -91,8 +91,11 @@ class S {
       'delete': 'מחיקה',
       'notSaved': 'לא שמורה עדיין',
       'backup': 'גיבוי ושחזור',
+      'quickBackup': 'גיבוי מהיר לתיקיית ברירת המחדל',
+      'quickBackupSub': 'כל החתימות, החותמות והשם — ישירות לתיקייה שנבחרה',
       'exportSettings': 'גיבוי לקובץ',
-      'exportSettingsSub': 'שומר את החתימה, החותמת והשם — אפשר לשים ב-Drive',
+      'exportSettingsSub':
+          'שומר את כל החתימות, החותמות והשם — אפשר לשים ב-Drive',
       'importSettings': 'שחזור מקובץ',
       'backupSaved': 'הגיבוי נשמר',
       'backupRestored': 'שוחזר בהצלחה',
@@ -229,9 +232,12 @@ class S {
       'delete': 'Delete',
       'notSaved': 'Not saved yet',
       'backup': 'Backup & restore',
+      'quickBackup': 'Quick backup to default folder',
+      'quickBackupSub':
+          'Every signature, stamp and your name — straight to the chosen folder',
       'exportSettings': 'Back up to file',
       'exportSettingsSub':
-          'Saves your signature, stamp and name — keep it in Drive',
+          'Saves every signature, stamp and your name — keep it in Drive',
       'importSettings': 'Restore from file',
       'backupSaved': 'Backup saved',
       'backupRestored': 'Restored successfully',

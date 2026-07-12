@@ -13,11 +13,13 @@ final routeObserver = RouteObserver<PageRoute<void>>();
 class QuickSignApp extends StatelessWidget {
   const QuickSignApp({super.key});
 
-  static const _seed = Color(0xFF1A5CB0);
+  static const _seed = Color(0xFF3E63DD);
 
   ThemeData _theme(Brightness brightness) {
-    final scheme =
-        ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _seed,
+      brightness: brightness,
+    );
     return ThemeData(
       colorScheme: scheme,
       // Heebo covers Hebrew + Latin — one typographic voice everywhere,
@@ -62,9 +64,7 @@ class QuickSignApp extends StatelessWidget {
         behavior: SnackBarBehavior.floating,
       ),
       dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
   }

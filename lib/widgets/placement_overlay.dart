@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/strings.dart';
 import '../models/placement.dart';
 import '../services/export_service.dart';
+import '../theme/design_tokens.dart';
 
 /// A placed signature / stamp / note rendered above the document.
 ///
@@ -66,8 +67,10 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
     p.nx = (p.nx + delta.dx / widget.pageRect.width).clamp(0.0, 1.0);
     p.ny = (p.ny + delta.dy / widget.pageRect.height).clamp(0.0, 1.0);
     if (details.pointerCount > 1) {
-      p.widthFraction = (_startWidthFraction * details.scale)
-          .clamp(_minWidthFraction, _maxWidthFraction);
+      p.widthFraction = (_startWidthFraction * details.scale).clamp(
+        _minWidthFraction,
+        _maxWidthFraction,
+      );
       p.rotation = _startRotation + details.rotation;
     }
     widget.onChanged();
@@ -78,8 +81,10 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
     final delta = details.delta / _zoom;
     final widthPx = p.widthFraction * widget.pageRect.width;
     final newWidthPx = widthPx + delta.dx + delta.dy;
-    p.widthFraction = (newWidthPx / widget.pageRect.width)
-        .clamp(_minWidthFraction, _maxWidthFraction);
+    p.widthFraction = (newWidthPx / widget.pageRect.width).clamp(
+      _minWidthFraction,
+      _maxWidthFraction,
+    );
     widget.onChanged();
   }
 
@@ -107,7 +112,9 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
       width: width + 2 * _handlePad,
       height: height + 2 * _handlePad,
       child: GestureDetector(
-        behavior: _selected ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
+        behavior: _selected
+            ? HitTestBehavior.opaque
+            : HitTestBehavior.deferToChild,
         onScaleStart: _onScaleStart,
         onScaleUpdate: _onScaleUpdate,
         onLongPress: () => setState(() => _selected = true),
@@ -125,8 +132,7 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color:
-                          _selected ? scheme.primary : Colors.transparent,
+                      color: _selected ? scheme.primary : Colors.transparent,
                       width: 1.5,
                     ),
                   ),
@@ -135,6 +141,48 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
               ),
             ),
             if (_selected) ...[
+              // Dashed selection frame + soft fill, matching the hi-fi
+              // handoff, drawn just inside the handle padding.
+              Positioned(
+                left: _handlePad - 11,
+                top: _handlePad - 13,
+                width: width + 22,
+                height: height + 26,
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _DashedSelectionPainter(
+                      color: DesignTokens.primary,
+                    ),
+                  ),
+                ),
+              ),
+              // Rotate handle — top center, connected to the item by a
+              // short line, matching the handoff. Tap rotates 15°; the
+              // GestureDetector above already handles two-finger rotation.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _Dot(
+                        diameter: 15,
+                        fillColor: DesignTokens.primary,
+                        borderColor: Colors.white,
+                        label: S.of(context)['rotate'],
+                        onTap: _rotate,
+                      ),
+                      Container(
+                        width: 1.5,
+                        height: 11,
+                        color: DesignTokens.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               // Physical corners (not directional) so the resize handle is
               // always bottom-right — dragging down/right grows, intuitive
               // in both RTL and LTR.
@@ -146,16 +194,6 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                   icon: Icons.close,
                   label: S.of(context)['deleteItem'],
                   onTap: widget.onDelete,
-                ),
-              ),
-              Positioned(
-                top: 0,
-                right: 0,
-                child: _Handle(
-                  color: scheme.secondary,
-                  icon: Icons.rotate_right,
-                  label: S.of(context)['rotate'],
-                  onTap: _rotate,
                 ),
               ),
               if (widget.onEdit != null)
@@ -170,11 +208,12 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
                   ),
                 ),
               Positioned(
-                bottom: 0,
-                right: 0,
-                child: _Handle(
-                  color: scheme.primary,
-                  icon: Icons.open_in_full,
+                bottom: -7,
+                right: -7,
+                child: _Dot(
+                  diameter: 15,
+                  fillColor: Colors.white,
+                  borderColor: DesignTokens.primary,
                   label: S.of(context)['resizeDrag'],
                   onPanUpdate: _onResizeDrag,
                 ),
@@ -218,8 +257,9 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
   double _measureNoteHeight(String text, double width, TextStyle style) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
-      textDirection:
-          ExportService.isRtlText(text) ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: ExportService.isRtlText(text)
+          ? TextDirection.rtl
+          : TextDirection.ltr,
     )..layout(minWidth: width, maxWidth: width);
     final height = painter.height;
     painter.dispose();
@@ -227,36 +267,83 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
   }
 }
 
-/// Compact corner handle. Provide [onTap] for tap actions or [onPanUpdate]
-/// for a continuous drag action (resize).
+/// Compact corner handle with a tap action — used for delete/edit, which
+/// aren't part of the redesign spec and keep their original, clearly
+/// recognizable icon treatment.
 class _Handle extends StatelessWidget {
   const _Handle({
     required this.color,
     required this.icon,
     required this.label,
-    this.onTap,
-    this.onPanUpdate,
+    required this.onTap,
   });
 
   final Color color;
   final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: color,
+          shape: const CircleBorder(),
+          elevation: 2,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(icon, size: 16, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Plain colored dot — the resize/rotate handle style from the hi-fi
+/// handoff (no icon, just a filled or outlined circle). The visible circle
+/// is tiny, but the tap target is padded out to a comfortable size.
+class _Dot extends StatelessWidget {
+  const _Dot({
+    required this.diameter,
+    required this.fillColor,
+    required this.borderColor,
+    required this.label,
+    this.onTap,
+    this.onPanUpdate,
+  });
+
+  final double diameter;
+  final Color fillColor;
+  final Color borderColor;
   final String label;
   final VoidCallback? onTap;
   final GestureDragUpdateCallback? onPanUpdate;
 
   @override
   Widget build(BuildContext context) {
-    final circle = Material(
-      color: color,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: 16, color: Colors.white),
-        ),
+    final dot = Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        color: fillColor,
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: DesignTokens.ink.withValues(alpha: 0.3),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
     );
     return Tooltip(
@@ -264,14 +351,65 @@ class _Handle extends StatelessWidget {
       child: Semantics(
         button: true,
         label: label,
-        child: onPanUpdate == null
-            ? circle
-            : GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanUpdate: onPanUpdate,
-                child: circle,
-              ),
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: onPanUpdate == null
+              ? GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onTap,
+                  child: dot,
+                )
+              : GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanUpdate: onPanUpdate,
+                  child: dot,
+                ),
+        ),
       ),
     );
   }
+}
+
+/// Dashed rounded-rect outline + soft fill — the selection frame from the
+/// hi-fi handoff. Flutter has no built-in dashed border, so this walks the
+/// perimeter drawing short strokes.
+class _DashedSelectionPainter extends CustomPainter {
+  const _DashedSelectionPainter({required this.color});
+
+  final Color color;
+
+  static const double _dash = 5;
+  static const double _gap = 4;
+  static const double _radius = 8;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(_radius),
+    );
+    canvas.drawRRect(rrect, Paint()..color = color.withValues(alpha: 0.05));
+
+    final path = Path()..addRRect(rrect);
+    final dashed = Path();
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = math.min(distance + _dash, metric.length);
+        dashed.addPath(metric.extractPath(distance, next), Offset.zero);
+        distance = next + _gap;
+      }
+    }
+    canvas.drawPath(
+      dashed,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedSelectionPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

@@ -32,6 +32,7 @@ import '../services/print_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
+import '../theme/design_tokens.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/bottom_toolbar.dart';
 import '../widgets/drag_drop_stub.dart'
@@ -138,6 +139,11 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   bool _ctrlPressed = false;
   bool _middleButtonDown = false;
 
+  // Drives the header's page pill — kept in sync (deferred to the next
+  // frame, since it's updated from inside the document canvas's own build)
+  // by the same scroll-position math that used to draw a floating badge.
+  final ValueNotifier<int> _currentPageNotifier = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
@@ -233,6 +239,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     drag_drop.detachFileDrop(_dragHandle);
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _shareSub?.cancel();
+    _currentPageNotifier.dispose();
     _transformation.dispose();
     _session?.dispose();
     _renderService.close();
@@ -881,9 +888,8 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final session = _session;
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: scheme.surfaceContainerHighest,
+      backgroundColor: DesignTokens.canvasBg,
       body: Stack(
         children: [
           Column(
@@ -922,85 +928,108 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   }
 
   /// Replaces the Scaffold's AppBar so it can collapse to full-screen —
-  /// same look, but height-animatable. [NavigationToolbar] is the exact
-  /// primitive AppBar itself builds on, so title centering/spacing matches.
+  /// two rows per the hi-fi handoff: logo/name + nav icons, then file name +
+  /// current-page pill. Height-animatable, unlike a real AppBar.
   Widget _buildTopBar(S s, DocumentSession? session) {
-    final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: scheme.surface,
-      elevation: 1,
-      shadowColor: scheme.shadow,
+      color: DesignTokens.surfaceHeader,
       child: SafeArea(
         bottom: false,
-        child: SizedBox(
-          height: kToolbarHeight + (session != null ? 14 : 0),
-          child: NavigationToolbar(
-            middle: session == null
-                ? Text(
-                    s['appTitle'],
-                    style: Theme.of(context).textTheme.titleLarge,
-                  )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        s['appTitle'],
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        session.fileName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-            trailing: Row(
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: DesignTokens.hairline1)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (session != null)
-                  IconButton(
-                    tooltip: s['managePages'],
-                    iconSize: 26,
-                    onPressed: _busy ? null : _managePages,
-                    icon: const Icon(Icons.post_add_outlined),
-                  ),
-                if (session != null)
-                  IconButton(
-                    tooltip: s['newDocument'],
-                    iconSize: 26,
-                    onPressed: _busy ? null : _pickAndOpen,
-                    icon: const Icon(Icons.note_add_outlined),
-                  ),
-                if (HistoryService.isSupported)
-                  IconButton(
-                    tooltip: s['history'],
-                    iconSize: 26,
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const HistoryScreen(),
+                Row(
+                  children: [
+                    _buildLogo(),
+                    const SizedBox(width: 9),
+                    Text(
+                      s['appTitle'],
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        color: DesignTokens.ink,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (session != null)
+                      _HeaderIconButton(
+                        icon: Icons.post_add_outlined,
+                        tooltip: s['managePages'],
+                        onTap: _busy ? null : _managePages,
+                      ),
+                    if (session != null)
+                      _HeaderIconButton(
+                        icon: Icons.note_add_outlined,
+                        tooltip: s['newDocument'],
+                        onTap: _busy ? null : _pickAndOpen,
+                      ),
+                    if (HistoryService.isSupported)
+                      _HeaderIconButton(
+                        icon: Icons.history,
+                        tooltip: s['history'],
+                        onTap: _busy
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const HistoryScreen(),
+                                ),
+                              ),
+                      ),
+                    _HeaderIconButton(
+                      icon: Icons.settings_outlined,
+                      tooltip: s['settings'],
+                      onTap: _busy
+                          ? null
+                          : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SettingsScreen(),
+                              ),
                             ),
-                          ),
-                    icon: const Icon(Icons.history),
-                  ),
-                IconButton(
-                  tooltip: s['settings'],
-                  iconSize: 26,
-                  onPressed: _busy
-                      ? null
-                      : () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
+                    ),
+                  ],
+                ),
+                if (session != null) ...[
+                  const SizedBox(height: 11),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.description_outlined,
+                        size: 15,
+                        color: DesignTokens.textFaint,
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          session.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: DesignTokens.textMuted2,
                           ),
                         ),
-                  icon: const Icon(Icons.settings_outlined),
-                ),
+                      ),
+                      if (session.pageCount > 1) ...[
+                        const SizedBox(width: 8),
+                        ValueListenableBuilder<int>(
+                          valueListenable: _currentPageNotifier,
+                          builder: (context, page, _) => _PagePill(
+                            text:
+                                '${s['page']} ${page + 1} / ${session.pageCount}',
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -1009,26 +1038,51 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     );
   }
 
+  Widget _buildLogo() {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        gradient: DesignTokens.primaryGradient,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: DesignTokens.primaryDeep.withValues(alpha: 0.6),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+            spreadRadius: -3,
+          ),
+        ],
+      ),
+      child: const Icon(Icons.draw_outlined, color: Colors.white, size: 17),
+    );
+  }
+
   Widget _buildBottomBar(DocumentSession? session) {
-    final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: scheme.surfaceContainer,
-      elevation: 3,
-      shadowColor: scheme.shadow,
+      color: DesignTokens.surfaceHeader,
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            BottomToolbar(
-              armedTool: _armedTool,
-              enabled: session != null && !_busy,
-              onToolSelected: _onToolSelected,
-              onSend: _send,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: DesignTokens.hairline1)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                BottomToolbar(
+                  armedTool: _armedTool,
+                  enabled: session != null && !_busy,
+                  onToolSelected: _onToolSelected,
+                  onSend: _send,
+                ),
+                // Ads pinned at the very bottom, below the toolbar.
+                const AdBanner(),
+              ],
             ),
-            // Ads pinned at the very bottom, below the toolbar.
-            const AdBanner(),
-          ],
+          ),
         ),
       ),
     );
@@ -1222,12 +1276,14 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                   }
                 },
                 onPointerUp: (_) {
-                  if (_middleButtonDown)
+                  if (_middleButtonDown) {
                     setState(() => _middleButtonDown = false);
+                  }
                 },
                 onPointerCancel: (_) {
-                  if (_middleButtonDown)
+                  if (_middleButtonDown) {
                     setState(() => _middleButtonDown = false);
+                  }
                 },
                 child: MouseRegion(
                   cursor: _middleButtonDown
@@ -1328,59 +1384,32 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
             ),
             // Zoom controls — mouse/keyboard friendly and accessible.
             PositionedDirectional(
-              bottom: 14,
-              end: 14,
-              child: Column(
-                children: [
-                  _ZoomButton(
-                    icon: Icons.add,
-                    label: S.of(context)['zoomIn'],
-                    onTap: () => _zoomBy(1.4),
-                  ),
-                  const SizedBox(height: 8),
-                  _ZoomButton(
-                    icon: Icons.remove,
-                    label: S.of(context)['zoomOut'],
-                    onTap: () => _zoomBy(1 / 1.4),
-                  ),
-                ],
+              bottom: 18,
+              end: 16,
+              child: _ZoomControl(
+                onZoomIn: () => _zoomBy(1.4),
+                onZoomOut: () => _zoomBy(1 / 1.4),
               ),
             ),
-            // Current page indicator (multi-page documents only).
+            // Invisible: keeps the header's page pill (see _buildTopBar) in
+            // sync with scroll position — same math the pill used to be
+            // drawn with directly, now just feeding a notifier instead.
             if (session.pageCount > 1)
-              Positioned(
-                top: 10,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: AnimatedBuilder(
-                    animation: _transformation,
-                    builder: (context, _) {
-                      final page = _currentPage(
-                        tops,
-                        heights,
-                        constraints.maxHeight,
-                      );
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xB3000000),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${page + 1} / ${session.pageCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+              AnimatedBuilder(
+                animation: _transformation,
+                builder: (context, _) {
+                  final page = _currentPage(
+                    tops,
+                    heights,
+                    constraints.maxHeight,
+                  );
+                  if (_currentPageNotifier.value != page) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _currentPageNotifier.value = page;
+                    });
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
             if (_busy)
               const Positioned.fill(
@@ -1546,43 +1575,105 @@ class _PageItem extends StatelessWidget {
       onLongPressCancel: onMarkEnd,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: const [
+          color: DesignTokens.surfacePaper,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 6,
-              offset: Offset(0, 2),
+              color: DesignTokens.ink.withValues(alpha: 0.4),
+              blurRadius: 40,
+              offset: const Offset(0, 18),
+              spreadRadius: -18,
+            ),
+            BoxShadow(
+              color: DesignTokens.ink.withValues(alpha: 0.16),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+              spreadRadius: -4,
             ),
           ],
         ),
-        child: FutureBuilder<Uint8List>(
-          future: renderService.renderPage(pageIndex),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: FutureBuilder<Uint8List>(
+            future: renderService.renderPage(pageIndex),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                );
+              }
+              return Image.memory(
+                snapshot.data!,
+                fit: BoxFit.fill,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.medium,
               );
-            }
-            return Image.memory(
-              snapshot.data!,
-              fit: BoxFit.fill,
-              gaplessPlayback: true,
-              filterQuality: FilterQuality.medium,
-            );
-          },
+            },
+          ),
         ),
       ),
     );
   }
 }
 
-/// Small round zoom button, tooltip'd and screen-reader friendly.
-class _ZoomButton extends StatelessWidget {
-  const _ZoomButton({
+/// Floating zoom control — a single rounded card with +/− stacked and a
+/// hairline divider, matching the hi-fi handoff exactly.
+class _ZoomControl extends StatelessWidget {
+  const _ZoomControl({required this.onZoomIn, required this.onZoomOut});
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: DesignTokens.surfacePaper,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: DesignTokens.hairline3),
+        boxShadow: [
+          BoxShadow(
+            color: DesignTokens.ink.withValues(alpha: 0.35),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: -8,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ZoomIconButton(
+              icon: Icons.add,
+              label: s['zoomIn'],
+              onTap: onZoomIn,
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(color: DesignTokens.hairline3),
+              child: SizedBox(width: 40, height: 1),
+            ),
+            _ZoomIconButton(
+              icon: Icons.remove,
+              label: s['zoomOut'],
+              onTap: onZoomOut,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single button inside [_ZoomControl] — 40dp square, transparent.
+class _ZoomIconButton extends StatelessWidget {
+  const _ZoomIconButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -1594,23 +1685,84 @@ class _ZoomButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Tooltip(
       message: label,
       child: Semantics(
         button: true,
         label: label,
-        child: Material(
-          color: scheme.surfaceContainerHigh.withValues(alpha: 0.92),
-          shape: const CircleBorder(),
-          elevation: 2,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Icon(icon, size: 24, color: scheme.onSurface),
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(icon, size: 20, color: DesignTokens.iconStroke2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Header nav icon — 38dp transparent rounded button.
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(11),
+          onTap: onTap,
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(
+              icon,
+              size: 21,
+              color: onTap == null
+                  ? DesignTokens.iconStroke.withValues(alpha: 0.35)
+                  : DesignTokens.iconStroke,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The blue "עמוד X / Y" pill in the header's second row.
+class _PagePill extends StatelessWidget {
+  const _PagePill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: DesignTokens.primarySoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: DesignTokens.primaryDeep,
           ),
         ),
       ),

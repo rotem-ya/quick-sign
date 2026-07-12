@@ -4,6 +4,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/strings.dart';
 import 'screens/work_screen.dart';
 
+/// Lets WorkScreen know when it stops being the visible, topmost route
+/// (Settings/History pushed on top, a sheet/dialog opened, …) — used to
+/// scope the web mouse-wheel-pan override so it never steals scroll from
+/// another screen's own scrollable.
+final routeObserver = RouteObserver<PageRoute<void>>();
+
 class QuickSignApp extends StatelessWidget {
   const QuickSignApp({super.key});
 
@@ -78,6 +84,7 @@ class QuickSignApp extends StatelessWidget {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: ThemeMode.system,
+      navigatorObservers: [routeObserver],
       home: const WorkScreen(),
     );
   }

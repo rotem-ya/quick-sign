@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:intl/intl.dart';
 
+import '../app.dart';
 import '../l10n/strings.dart';
 import '../models/document_session.dart';
 import '../models/placement.dart';
@@ -24,6 +25,9 @@ import '../widgets/bottom_toolbar.dart';
 import '../widgets/note_sheet.dart';
 import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
+import '../widgets/wheel_scroll_stub.dart'
+    if (dart.library.js_interop) '../widgets/wheel_scroll_web.dart'
+    as wheel_scroll;
 import 'history_screen.dart';
 import 'page_manager_screen.dart';
 import 'settings_screen.dart';
@@ -37,7 +41,7 @@ class WorkScreen extends StatefulWidget {
   State<WorkScreen> createState() => _WorkScreenState();
 }
 
-class _WorkScreenState extends State<WorkScreen> {
+class _WorkScreenState extends State<WorkScreen> with RouteAware {
   static const double _pagePadding = 12;
   static const double _pageGap = 10;
 
@@ -80,10 +84,20 @@ class _WorkScreenState extends State<WorkScreen> {
   Size _viewportSize = Size.zero;
   double _docHeight = 0;
 
+  // Web only: whether this screen is the visible, topmost route — scopes
+  // the mouse-wheel-pan override so it never steals scroll from another
+  // screen (Settings, History, a sheet, a dialog…).
+  bool _isTopRoute = true;
+  Object? _wheelHandle;
+
   @override
   void initState() {
     super.initState();
     _initSharing();
+    _wheelHandle = wheel_scroll.attachWheelPan(
+      shouldIntercept: () => _isTopRoute && _session != null && _docHeight > 0,
+      onPan: _panByWheel,
+    );
   }
 
   Future<void> _initSharing() async {
@@ -96,12 +110,45 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) routeObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() => setState(() => _isTopRoute = false);
+
+  @override
+  void didPopNext() => setState(() => _isTopRoute = true);
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
+    wheel_scroll.detachWheelPan(_wheelHandle);
     _shareSub?.cancel();
     _transformation.dispose();
     _session?.dispose();
     _renderService.close();
     super.dispose();
+  }
+
+  /// Plain mouse wheel pans the document like a normal page/PDF reader —
+  /// InteractiveViewer itself hard-codes wheel as zoom with no way to opt
+  /// out (see wheel_scroll_web.dart), so this mirrors _zoomBy's clamp math
+  /// for a pure translation instead of a scale change.
+  void _panByWheel(double dx, double dy) {
+    final matrix = _transformation.value;
+    final scale = matrix.getMaxScaleOnAxis();
+    final t = matrix.getTranslation();
+    var tx = t.x - dx;
+    var ty = t.y - dy;
+    tx = tx.clamp(_viewportSize.width * (1 - scale), 0.0);
+    final minY = math.min(0.0, _viewportSize.height - _docHeight * scale);
+    ty = ty.clamp(minY, 0.0);
+    _transformation.value = Matrix4.identity()
+      ..translateByDouble(tx, ty, 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1);
   }
 
   // ── Import ────────────────────────────────────────────────────────────────

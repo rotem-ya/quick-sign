@@ -98,4 +98,4 @@ lib/
 - **AdMob:** להחליף את מזהי הבדיקה במזהים אמיתיים —
   `AndroidManifest.xml` (APPLICATION_ID), `Info.plist` (GADApplicationIdentifier),
   ו-`lib/widgets/ad_banner.dart` (ad unit IDs).
-- **Application ID:** לשנות `com.example.quick_sign` למזהה אמיתי.
+- **Application ID:** `com.rotem.quicksign` — כבר עודכן בכל הפלטפורמות (Android/iOS/macOS/Linux).

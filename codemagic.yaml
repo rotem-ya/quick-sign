@@ -1,0 +1,38 @@
+workflows:
+  ios-testflight:
+    name: QuickSign iOS — TestFlight
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: "ios-v*"
+          include: true
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      # Must match the integration name created in Codemagic exactly
+      # (Teams → Integrations → App Store Connect → Manage keys).
+      app_store_connect: Apple_Key_QuickSign
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.rotem.quicksign
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=$PROJECT_BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

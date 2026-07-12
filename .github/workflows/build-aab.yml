@@ -1,0 +1,54 @@
+# Builds a signed Android App Bundle (AAB) for Google Play.
+#
+# One-time setup by the product owner (see COWORK.md for the exact steps):
+# 1. Generate an upload keystore (`keytool -genkey ...`) and keep it safe —
+#    it's the permanent signing identity of the app on Play.
+# 2. GitHub repo → Settings → Secrets and variables → Actions, add:
+#    - UPLOAD_KEYSTORE_BASE64  (base64 -w0 of the .jks file)
+#    - UPLOAD_KEYSTORE_PASSWORD
+#    - UPLOAD_KEY_ALIAS
+#    - UPLOAD_KEY_PASSWORD
+#
+# Trigger this workflow by pushing a change to .github/aab-release.txt (any
+# content — it's just a marker file), pushing an `aab-v*` tag, or via
+# "Run workflow" in the Actions UI.
+name: Build AAB (Google Play)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_name:
+        description: "Version name (e.g. 1.0.0)"
+        default: "1.0.0"
+  push:
+    tags: ["aab-v*"]
+    paths: [".github/aab-release.txt"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+
+      - name: Restore upload keystore from secret
+        run: echo "${{ secrets.UPLOAD_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+
+      - run: flutter pub get
+      - name: Build signed App Bundle
+        env:
+          KEYSTORE_STORE_PASS: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          KEYSTORE_KEY_PASS: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release \
+            --build-name="${{ github.event.inputs.build_name || '1.0.0' }}" \
+            --build-number="${{ github.run_number }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab

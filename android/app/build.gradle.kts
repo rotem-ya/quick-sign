@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.quick_sign"
+    namespace = "com.rotem.quicksign"
     // receive_sharing_intent compiles against SDK 37.
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
@@ -21,8 +21,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.quick_sign"
+        applicationId = "com.rotem.quicksign"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -31,11 +30,30 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release AABs/APKs are signed with the upload keystore when
+    // android/app/keystore.jks + KEYSTORE_* env vars are present (CI, via
+    // GitHub Actions secrets — see .github/workflows/build-aab.yml). Falls
+    // back to the debug key locally so `flutter build apk`/`flutter run
+    // --release` keep working without that keystore.
+    signingConfigs {
+        create("release") {
+            val keystoreFile = file("keystore.jks")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_STORE_PASS")
+                keyAlias = System.getenv("KEYSTORE_ALIAS")
+                keyPassword = System.getenv("KEYSTORE_KEY_PASS")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (file("keystore.jks").exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

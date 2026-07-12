@@ -173,6 +173,16 @@
   שנוצר מאז היה חסר חתימות וחותמות. תוקן: הגיבוי עכשיו קורא מהספרייה
   הנוכחית במלואה. אומת קצה-לקצה: יצירת חתימה → גיבוי → ייבוא במכשיר "נקי"
   לגמרי → החתימה חוזרת נכון.
+- 🐛→✅ **Application ID עדיין ברירת מחדל של Flutter** (`com.example.*`),
+  ולא זהה בין אנדרואיד ל-iOS — תוקן ל-`com.rotem.quicksign` בכל הפלטפורמות
+  (אנדרואיד: namespace+applicationId+חבילת Kotlin, iOS/macOS: bundle
+  identifier, Linux: APPLICATION_ID). אומת: `flutter analyze` + `flutter
+  build apk --release` נקיים אחרי השינוי.
+- 🐛→✅ **release Android נחתם עם מפתח debug** — נוצר upload keystore אמיתי
+  (נשלח לבעל המוצר בנפרד, לא בגיט), נוסף `signingConfigs["release"]`
+  ב-`build.gradle.kts` שמשתמש בו כש-`android/app/keystore.jks` קיים
+  ונופל חזרה ל-debug signing אחרת (כך שהפיתוח המקומי לא נשבר), ונוסף
+  `.github/workflows/build-aab.yml` שמרכיב אותו מ-GitHub Secret ב-CI.
 
 ---
 
@@ -197,6 +207,9 @@
 - 🔑 מעבר ל-Firebase Hosting + דומיין משלך — נשאר רק Service Account
   ו-Secrets (ההוראות ב-`.github/workflows/deploy-firebase.yml`)
 - 🔑 מזהי AdMob אמיתיים (מניפסט, Info.plist, ad_banner.dart)
-- 🔑 Application ID אמיתי במקום `com.example.quick_sign`
-- 🔑 Keystore לחתימת release (כרגע debug) — נדרש לחנות
+- 🔑 **הקמת Firebase Auth (Google+Apple) + הגשה לחנויות** — התהליך המדויק
+  מתועד ב-`COWORK.md` (מבוסס על `rotem-ya/claude-guides`, נבדק בפועל
+  בפרויקט קודם). כל מה שניתן להכין מראש בקוד כבר מוכן (ר' בדיקוני מהסבב
+  האחרון); מה שנשאר דורש בעל החשבון: יצירת/רישום פרויקט Firebase,
+  Apple Developer, Codemagic, ו-4 GitHub Secrets לחתימת ה-AAB.
 - 🔑 iOS: Mac + חשבון Apple Developer + Share Extension ב-Xcode

@@ -117,7 +117,10 @@ class ImportService {
     final pdfBytes = ext == 'pdf'
         ? bytes
         : Uint8List.fromList(wrapImageAsPdf(bytes));
-    final info = await _renderService.open(pdfBytes);
+    // The web renderer (pdf.js) transfers the buffer it's given to a worker,
+    // detaching it — pass it a throwaway copy so pdfBytes (kept on the
+    // session for export/page-management/etc.) stays readable afterwards.
+    final info = await _renderService.open(Uint8List.fromList(pdfBytes));
     final session = DocumentSession(
       pdfBytes: pdfBytes,
       fileName: ext == 'pdf' ? fileName : '$fileName.pdf',

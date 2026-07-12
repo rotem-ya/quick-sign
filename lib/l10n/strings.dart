@@ -139,6 +139,10 @@ class S {
       'unsetDefault': 'ביטול ברירת מחדל',
       'noSavedSignatures': 'אין חתימות שמורות',
       'noSavedStamps': 'אין חותמות שמורות',
+      'dropToOpen': 'שחררו כאן כדי לפתוח',
+      'dragDropHint': 'או גרירת קובץ לכאן',
+      'reorderPages': 'סידור עמודים',
+      'dragToReorder': 'גררו לשינוי סדר',
     },
     'en': {
       'appTitle': 'QuickSign',
@@ -275,6 +279,10 @@ class S {
       'unsetDefault': 'Unset default',
       'noSavedSignatures': 'No saved signatures',
       'noSavedStamps': 'No saved stamps',
+      'dropToOpen': 'Drop to open',
+      'dragDropHint': 'or drag a file here',
+      'reorderPages': 'Reorder pages',
+      'dragToReorder': 'Drag to reorder',
     },
   };
 

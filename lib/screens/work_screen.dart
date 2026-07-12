@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:intl/intl.dart';
@@ -22,6 +23,9 @@ import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/bottom_toolbar.dart';
+import '../widgets/drag_drop_stub.dart'
+    if (dart.library.js_interop) '../widgets/drag_drop_web.dart'
+    as drag_drop;
 import '../widgets/note_sheet.dart';
 import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
@@ -90,6 +94,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   bool _isTopRoute = true;
   Object? _wheelHandle;
 
+  // Web only: dragging a file over the window shows a "drop to open" overlay.
+  Object? _dragHandle;
+  bool _isDragActive = false;
+
   @override
   void initState() {
     super.initState();
@@ -98,6 +106,22 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       shouldIntercept: () => _isTopRoute && _session != null && _docHeight > 0,
       onPan: _panByWheel,
     );
+    _dragHandle = drag_drop.attachFileDrop(
+      onFile: _handleDroppedFile,
+      onDragStateChanged: (active) {
+        if (!mounted || !_isTopRoute) return;
+        setState(() => _isDragActive = active);
+      },
+    );
+  }
+
+  Future<void> _handleDroppedFile(Uint8List bytes, String fileName) async {
+    if (!_isTopRoute || _busy) return;
+    if (!ImportService.isSupported(fileName)) {
+      _snack(S.of(context)['importError']);
+      return;
+    }
+    await _openWith(() => _importService.openBytes(bytes, fileName: fileName));
   }
 
   Future<void> _initSharing() async {
@@ -126,6 +150,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   void dispose() {
     routeObserver.unsubscribe(this);
     wheel_scroll.detachWheelPan(_wheelHandle);
+    drag_drop.detachFileDrop(_dragHandle);
     _shareSub?.cancel();
     _transformation.dispose();
     _session?.dispose();
@@ -790,31 +815,90 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: session == null ? _buildEmptyState(s) : _buildDocument(),
-          ),
-          Material(
-            color: scheme.surfaceContainer,
-            child: SafeArea(
-              top: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  BottomToolbar(
-                    armedTool: _armedTool,
-                    enabled: session != null && !_busy,
-                    onToolSelected: _onToolSelected,
-                    onSend: _send,
+          Column(
+            children: [
+              Expanded(
+                child: session == null ? _buildEmptyState(s) : _buildDocument(),
+              ),
+              Material(
+                color: scheme.surfaceContainer,
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      BottomToolbar(
+                        armedTool: _armedTool,
+                        enabled: session != null && !_busy,
+                        onToolSelected: _onToolSelected,
+                        onSend: _send,
+                      ),
+                      // Ads pinned at the very bottom, below the toolbar.
+                      const AdBanner(),
+                    ],
                   ),
-                  // Ads pinned at the very bottom, below the toolbar.
-                  const AdBanner(),
-                ],
+                ),
+              ),
+            ],
+          ),
+          // Web only: shown while a file is dragged over the window.
+          if (_isDragActive) _buildDropOverlay(s),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropOverlay(S s) {
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: 1,
+          duration: const Duration(milliseconds: 120),
+          child: Container(
+            color: scheme.primary.withValues(alpha: 0.12),
+            child: Center(
+              child: Container(
+                margin: const EdgeInsets.all(28),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 28,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: 0.96),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: scheme.primary,
+                    width: 2,
+                    strokeAlign: BorderSide.strokeAlignOutside,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.file_download_outlined,
+                      size: 48,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      s['dropToOpen'],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -828,17 +912,26 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                shape: BoxShape.circle,
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 420),
+              curve: Curves.easeOutBack,
+              builder: (context, value, child) => Transform.scale(
+                scale: value.clamp(0.0, 1.0),
+                child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
               ),
-              child: Icon(
-                Icons.draw_outlined,
-                size: 52,
-                color: scheme.onPrimaryContainer,
+              child: Container(
+                width: 104,
+                height: 104,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.draw_outlined,
+                  size: 52,
+                  color: scheme.onPrimaryContainer,
+                ),
               ),
             ),
             const SizedBox(height: 22),
@@ -885,6 +978,27 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                   const SizedBox(width: 6),
                   Text(
                     s['shareHint'],
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (kIsWeb) ...[
+              const SizedBox(height: 18),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.file_download_outlined,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    s['dragDropHint'],
                     style: TextStyle(
                       fontSize: 15,
                       color: scheme.onSurfaceVariant,
@@ -1149,12 +1263,44 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
 /// Cheap stand-in for a page that is outside the render range — a blank
 /// sheet with no image decode, no isolate call, nothing async.
-class _PagePlaceholder extends StatelessWidget {
+/// Cheap stand-in for a not-yet-rendered page (lazy rendering) — a gentle
+/// pulse instead of a flat block, so a large document's placeholders read
+/// as "loading" rather than "blank/broken" while scrolling past them.
+class _PagePlaceholder extends StatefulWidget {
   const _PagePlaceholder();
 
   @override
+  State<_PagePlaceholder> createState() => _PagePlaceholderState();
+}
+
+class _PagePlaceholderState extends State<_PagePlaceholder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(decoration: BoxDecoration(color: Colors.white));
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: Color.lerp(
+            Colors.white,
+            scheme.surfaceContainerHighest,
+            0.5 + 0.5 * _controller.value,
+          ),
+        ),
+      ),
+    );
   }
 }
 

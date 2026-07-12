@@ -11,19 +11,16 @@ import '../services/pdf_render_service.dart';
 enum _StagedKind { blank, image, pdf }
 
 class _StagedAppend {
-  _StagedAppend.blank()
-      : kind = _StagedKind.blank,
-        bytes = null,
-        pageCount = 1;
+  _StagedAppend.blank() : kind = _StagedKind.blank, bytes = null, pageCount = 1;
 
   _StagedAppend.image(Uint8List b)
-      : kind = _StagedKind.image,
-        bytes = b,
-        pageCount = 1;
+    : kind = _StagedKind.image,
+      bytes = b,
+      pageCount = 1;
 
   _StagedAppend.pdf(Uint8List b, this.pageCount)
-      : kind = _StagedKind.pdf,
-        bytes = b;
+    : kind = _StagedKind.pdf,
+      bytes = b;
 
   final _StagedKind kind;
   final Uint8List? bytes;
@@ -55,13 +52,30 @@ class PageManagerScreen extends StatefulWidget {
 class _PageManagerScreenState extends State<PageManagerScreen> {
   final Set<int> _deletedIndices = {};
   final List<_StagedAppend> _staged = [];
+  late final List<int> _order = List.generate(
+    widget.session.pageCount,
+    (i) => i,
+  );
   bool _busy = false;
 
-  bool get _hasChanges => _deletedIndices.isNotEmpty || _staged.isNotEmpty;
+  bool get _isReordered =>
+      !_order.asMap().entries.every((e) => e.value == e.key);
+
+  bool get _hasChanges =>
+      _deletedIndices.isNotEmpty || _staged.isNotEmpty || _isReordered;
 
   void _toggleDelete(int index) {
     setState(() {
       if (!_deletedIndices.remove(index)) _deletedIndices.add(index);
+    });
+  }
+
+  void _reorder(int draggedOriginalIndex, int targetPosition) {
+    setState(() {
+      final fromPosition = _order.indexOf(draggedOriginalIndex);
+      if (fromPosition == -1 || fromPosition == targetPosition) return;
+      final item = _order.removeAt(fromPosition);
+      _order.insert(targetPosition, item);
     });
   }
 
@@ -119,7 +133,10 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined, size: 28),
-              title: Text(s['fromPdfFile'], style: const TextStyle(fontSize: 18)),
+              title: Text(
+                s['fromPdfFile'],
+                style: const TextStyle(fontSize: 18),
+              ),
               minTileHeight: 56,
               onTap: () {
                 Navigator.of(sheetContext).pop();
@@ -139,7 +156,7 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
       return;
     }
     final keepIndices = [
-      for (var i = 0; i < widget.session.pageCount; i++)
+      for (final i in _order)
         if (!_deletedIndices.contains(i)) i,
     ];
     if (keepIndices.isEmpty && _staged.isEmpty) {
@@ -179,9 +196,17 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
 
     setState(() => _busy = true);
     try {
-      var bytes = keepIndices.length == widget.session.pageCount
+      // Only the identity order (nothing deleted, nothing reordered) can
+      // skip a rebuild — a same-length keepIndices can still be a reorder.
+      final isIdentityOrder =
+          keepIndices.length == widget.session.pageCount &&
+          keepIndices.asMap().entries.every((e) => e.value == e.key);
+      var bytes = isIdentityOrder
           ? widget.session.pdfBytes
-          : ImportService.rebuildWithPages(widget.session.pdfBytes, keepIndices);
+          : ImportService.rebuildWithPages(
+              widget.session.pdfBytes,
+              keepIndices,
+            );
       for (final item in _staged) {
         switch (item.kind) {
           case _StagedKind.blank:
@@ -193,23 +218,27 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
         }
       }
 
-      final newSession = await widget.importService
-          .openBytes(bytes, fileName: widget.session.fileName);
+      final newSession = await widget.importService.openBytes(
+        bytes,
+        fileName: widget.session.fileName,
+      );
       final survivors = <Placement>[];
       for (final p in widget.session.placements.value) {
         final newIndex = keepIndices.indexOf(p.pageIndex);
         if (newIndex == -1) continue;
-        survivors.add(Placement(
-          type: p.type,
-          pageIndex: newIndex,
-          nx: p.nx,
-          ny: p.ny,
-          widthFraction: p.widthFraction,
-          aspectRatio: p.aspectRatio,
-          imageBytes: p.imageBytes,
-          text: p.text,
-          groupId: p.groupId,
-        )..rotation = p.rotation);
+        survivors.add(
+          Placement(
+            type: p.type,
+            pageIndex: newIndex,
+            nx: p.nx,
+            ny: p.ny,
+            widthFraction: p.widthFraction,
+            aspectRatio: p.aspectRatio,
+            imageBytes: p.imageBytes,
+            text: p.text,
+            groupId: p.groupId,
+          )..rotation = p.rotation,
+        );
       }
       newSession.placements.value = survivors;
 
@@ -243,28 +272,65 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
                     child: ListView(
                       padding: const EdgeInsets.all(12),
                       children: [
-                        Text(s['existingPages'],
-                            style: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        Row(
+                          children: [
+                            Text(
+                              s['existingPages'],
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (widget.session.pageCount > 1) ...[
+                              const SizedBox(width: 8),
+                              Icon(
+                                Icons.drag_indicator,
+                                size: 15,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                s['dragToReorder'],
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
                           children: [
-                            for (var i = 0; i < widget.session.pageCount; i++)
-                              _ExistingPageTile(
-                                pageIndex: i,
+                            for (var pos = 0; pos < _order.length; pos++)
+                              _ReorderableExistingPageTile(
+                                key: ValueKey(_order[pos]),
+                                originalIndex: _order[pos],
+                                position: pos,
+                                displayNumber: pos + 1,
                                 renderService: widget.renderService,
-                                deleted: _deletedIndices.contains(i),
-                                onToggleDelete: () => _toggleDelete(i),
+                                deleted: _deletedIndices.contains(_order[pos]),
+                                onToggleDelete: () =>
+                                    _toggleDelete(_order[pos]),
+                                onReorder: _reorder,
                               ),
                           ],
                         ),
                         if (_staged.isNotEmpty) ...[
                           const SizedBox(height: 20),
-                          Text(s['pagesToAdd'],
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text(
+                            s['pagesToAdd'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 10,
@@ -291,7 +357,8 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
                             icon: const Icon(Icons.add),
                             label: Text(s['addPages']),
                             style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(48, 56)),
+                              minimumSize: const Size(48, 56),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -302,7 +369,8 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
                             icon: const Icon(Icons.check),
                             label: Text(s['apply']),
                             style: FilledButton.styleFrom(
-                                minimumSize: const Size(48, 56)),
+                              minimumSize: const Size(48, 56),
+                            ),
                           ),
                         ),
                       ],
@@ -315,15 +383,79 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
   }
 }
 
+/// Drag-and-drop reordering for the existing-pages grid: a [DragTarget] (drop
+/// here) wrapping a [LongPressDraggable] (pick this tile up), keyed by the
+/// page's original index so a drop always resolves to the right page
+/// regardless of how many times the order has already changed.
+class _ReorderableExistingPageTile extends StatelessWidget {
+  const _ReorderableExistingPageTile({
+    required super.key,
+    required this.originalIndex,
+    required this.position,
+    required this.displayNumber,
+    required this.renderService,
+    required this.deleted,
+    required this.onToggleDelete,
+    required this.onReorder,
+  });
+
+  final int originalIndex;
+  final int position;
+  final int displayNumber;
+  final PdfRenderService renderService;
+  final bool deleted;
+  final VoidCallback onToggleDelete;
+  final void Function(int draggedOriginalIndex, int targetPosition) onReorder;
+
+  @override
+  Widget build(BuildContext context) {
+    final tile = _ExistingPageTile(
+      pageIndex: originalIndex,
+      displayNumber: displayNumber,
+      renderService: renderService,
+      deleted: deleted,
+      onToggleDelete: onToggleDelete,
+    );
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (details) => details.data != originalIndex,
+      onAcceptWithDetails: (details) => onReorder(details.data, position),
+      builder: (context, candidateData, rejectedData) => AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: candidateData.isNotEmpty
+              ? Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2,
+                )
+              : null,
+        ),
+        child: LongPressDraggable<int>(
+          data: originalIndex,
+          feedback: Material(
+            elevation: 6,
+            borderRadius: BorderRadius.circular(8),
+            child: Opacity(opacity: 0.9, child: tile),
+          ),
+          childWhenDragging: Opacity(opacity: 0.3, child: tile),
+          child: tile,
+        ),
+      ),
+    );
+  }
+}
+
 class _ExistingPageTile extends StatelessWidget {
   const _ExistingPageTile({
     required this.pageIndex,
+    required this.displayNumber,
     required this.renderService,
     required this.deleted,
     required this.onToggleDelete,
   });
 
   final int pageIndex;
+  final int displayNumber;
   final PdfRenderService renderService;
   final bool deleted;
   final VoidCallback onToggleDelete;
@@ -372,8 +504,11 @@ class _ExistingPageTile extends StatelessWidget {
                     onTap: onToggleDelete,
                     child: Padding(
                       padding: const EdgeInsets.all(5),
-                      child: Icon(deleted ? Icons.replay : Icons.close,
-                          size: 15, color: Colors.white),
+                      child: Icon(
+                        deleted ? Icons.replay : Icons.close,
+                        size: 15,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -382,7 +517,7 @@ class _ExistingPageTile extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            deleted ? s['pageDeleted'] : '${pageIndex + 1}',
+            deleted ? s['pageDeleted'] : '$displayNumber',
             style: TextStyle(
               fontSize: 12,
               color: deleted ? scheme.error : scheme.onSurfaceVariant,
@@ -419,25 +554,36 @@ class _StagedTile extends StatelessWidget {
                   border: Border.all(color: scheme.outlineVariant),
                 ),
                 child: switch (item.kind) {
-                  _StagedKind.blank => Icon(Icons.insert_drive_file_outlined,
-                      color: scheme.onPrimaryContainer, size: 30),
-                  _StagedKind.image =>
-                    Image.memory(item.bytes!, fit: BoxFit.cover),
+                  _StagedKind.blank => Icon(
+                    Icons.insert_drive_file_outlined,
+                    color: scheme.onPrimaryContainer,
+                    size: 30,
+                  ),
+                  _StagedKind.image => Image.memory(
+                    item.bytes!,
+                    fit: BoxFit.cover,
+                  ),
                   _StagedKind.pdf => Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.picture_as_pdf_outlined,
-                              color: scheme.onPrimaryContainer, size: 28),
-                          const SizedBox(height: 4),
-                          Text('${item.pageCount} ${s['nPages']}',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: scheme.onPrimaryContainer)),
-                        ],
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.picture_as_pdf_outlined,
+                          color: scheme.onPrimaryContainer,
+                          size: 28,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${item.pageCount} ${s['nPages']}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
                 },
               ),
               Positioned(

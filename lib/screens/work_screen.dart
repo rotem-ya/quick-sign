@@ -3,8 +3,18 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/gestures.dart' show kMiddleMouseButton;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter/services.dart'
+    show
+        HapticFeedback,
+        HardwareKeyboard,
+        KeyDownEvent,
+        KeyEvent,
+        KeyRepeatEvent,
+        LogicalKeyboardKey,
+        SystemChrome,
+        SystemUiMode;
 import 'package:intl/intl.dart';
 
 import '../app.dart';
@@ -72,6 +82,12 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   /// Note text follows the document's measured text-line height.
   static const double _noteLineHeights = 1.1;
 
+  /// Deep zoom — 3x the previous ceiling (was 6x page width).
+  static const double _maxZoomScale = 18.0;
+
+  /// Immersive chrome show/hide animation.
+  static const Duration _chromeAnimationDuration = Duration(milliseconds: 220);
+
   /// Group ids for whole-booklet placements (edit-one-edits-all).
   int _nextGroupId = 1;
 
@@ -111,6 +127,17 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   Object? _dragHandle;
   bool _isDragActive = false;
 
+  // Immersive reading: the app bar + bottom toolbar hide on open and toggle
+  // with a short tap, like a normal document reader (Foxit et al).
+  bool _chromeVisible = true;
+
+  // Desktop/web mouse feedback: Ctrl held → zoom cursor (matches Ctrl+wheel
+  // zoom); middle button held → grab cursor (matches middle-drag pan, which
+  // InteractiveViewer already performs for any mouse button — this only
+  // adds the visual affordance).
+  bool _ctrlPressed = false;
+  bool _middleButtonDown = false;
+
   @override
   void initState() {
     super.initState();
@@ -125,6 +152,38 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
         if (!mounted || !_isTopRoute) return;
         setState(() => _isDragActive = active);
       },
+    );
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.controlLeft &&
+        key != LogicalKeyboardKey.controlRight &&
+        key != LogicalKeyboardKey.metaLeft &&
+        key != LogicalKeyboardKey.metaRight) {
+      return false;
+    }
+    final pressed = event is KeyDownEvent || event is KeyRepeatEvent;
+    if (pressed != _ctrlPressed && mounted) {
+      setState(() => _ctrlPressed = pressed);
+    }
+    return false; // Never consume — this only observes key state.
+  }
+
+  void _toggleChrome() {
+    if (_session == null) return;
+    setState(() => _chromeVisible = !_chromeVisible);
+    _applyImmersiveMode(!_chromeVisible);
+  }
+
+  /// Hides the OS status/nav bars too on Android/iOS, so "full screen"
+  /// means the whole physical screen, not just the in-app toolbars. No-op
+  /// on web, where the browser owns its own chrome.
+  void _applyImmersiveMode(bool hidden) {
+    if (kIsWeb) return;
+    SystemChrome.setEnabledSystemUIMode(
+      hidden ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
   }
 
@@ -154,16 +213,25 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   }
 
   @override
-  void didPushNext() => setState(() => _isTopRoute = false);
+  void didPushNext() {
+    setState(() => _isTopRoute = false);
+    // Restore normal system bars for whatever screen is now on top
+    // (Settings/History) — immersive mode is only for reading a document.
+    if (!kIsWeb) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
 
   @override
-  void didPopNext() => setState(() => _isTopRoute = true);
+  void didPopNext() {
+    setState(() => _isTopRoute = true);
+    _applyImmersiveMode(!_chromeVisible);
+  }
 
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
     wheel_scroll.detachWheelPan(_wheelHandle);
     drag_drop.detachFileDrop(_dragHandle);
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _shareSub?.cancel();
     _transformation.dispose();
     _session?.dispose();
@@ -215,7 +283,11 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
         _session = session;
         _armedTool = ToolbarTool.signature;
         _busy = false;
+        // Full-screen, immersive reading as soon as a document loads —
+        // a short tap brings the toolbars back.
+        _chromeVisible = false;
       });
+      _applyImmersiveMode(true);
       _transformation.value = Matrix4.identity();
     } catch (_) {
       if (!mounted) return;
@@ -595,7 +667,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   void _zoomBy(double factor) {
     final matrix = _transformation.value;
     final scale = matrix.getMaxScaleOnAxis();
-    final target = (scale * factor).clamp(1.0, 6.0);
+    final target = (scale * factor).clamp(1.0, _maxZoomScale);
     if (target == scale) return;
     final f = target / scale;
     final center = Offset(_viewportSize.width / 2, _viewportSize.height / 2);
@@ -812,86 +884,32 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: scheme.surfaceContainerHighest,
-      appBar: AppBar(
-        title: session == null
-            ? Text(s['appTitle'])
-            : Column(
-                children: [
-                  Text(s['appTitle']),
-                  Text(
-                    session.fileName,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-        actions: [
-          if (session != null)
-            IconButton(
-              tooltip: s['managePages'],
-              iconSize: 26,
-              onPressed: _busy ? null : _managePages,
-              icon: const Icon(Icons.post_add_outlined),
-            ),
-          if (session != null)
-            IconButton(
-              tooltip: s['newDocument'],
-              iconSize: 26,
-              onPressed: _busy ? null : _pickAndOpen,
-              icon: const Icon(Icons.note_add_outlined),
-            ),
-          if (HistoryService.isSupported)
-            IconButton(
-              tooltip: s['history'],
-              iconSize: 26,
-              onPressed: _busy
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const HistoryScreen()),
-                    ),
-              icon: const Icon(Icons.history),
-            ),
-          IconButton(
-            tooltip: s['settings'],
-            iconSize: 26,
-            onPressed: _busy
-                ? null
-                : () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  ),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ClipRect(
+                child: AnimatedSize(
+                  duration: _chromeAnimationDuration,
+                  curve: Curves.easeInOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: _chromeVisible
+                      ? _buildTopBar(s, session)
+                      : const SizedBox(width: double.infinity),
+                ),
+              ),
               Expanded(
                 child: session == null ? _buildEmptyState(s) : _buildDocument(),
               ),
-              Material(
-                color: scheme.surfaceContainer,
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      BottomToolbar(
-                        armedTool: _armedTool,
-                        enabled: session != null && !_busy,
-                        onToolSelected: _onToolSelected,
-                        onSend: _send,
-                      ),
-                      // Ads pinned at the very bottom, below the toolbar.
-                      const AdBanner(),
-                    ],
-                  ),
+              ClipRect(
+                child: AnimatedSize(
+                  duration: _chromeAnimationDuration,
+                  curve: Curves.easeInOutCubic,
+                  alignment: Alignment.bottomCenter,
+                  child: _chromeVisible
+                      ? _buildBottomBar(session)
+                      : const SizedBox(width: double.infinity),
                 ),
               ),
             ],
@@ -899,6 +917,119 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
           // Web only: shown while a file is dragged over the window.
           if (_isDragActive) _buildDropOverlay(s),
         ],
+      ),
+    );
+  }
+
+  /// Replaces the Scaffold's AppBar so it can collapse to full-screen —
+  /// same look, but height-animatable. [NavigationToolbar] is the exact
+  /// primitive AppBar itself builds on, so title centering/spacing matches.
+  Widget _buildTopBar(S s, DocumentSession? session) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface,
+      elevation: 1,
+      shadowColor: scheme.shadow,
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: kToolbarHeight + (session != null ? 14 : 0),
+          child: NavigationToolbar(
+            middle: session == null
+                ? Text(
+                    s['appTitle'],
+                    style: Theme.of(context).textTheme.titleLarge,
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        s['appTitle'],
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        session.fileName,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (session != null)
+                  IconButton(
+                    tooltip: s['managePages'],
+                    iconSize: 26,
+                    onPressed: _busy ? null : _managePages,
+                    icon: const Icon(Icons.post_add_outlined),
+                  ),
+                if (session != null)
+                  IconButton(
+                    tooltip: s['newDocument'],
+                    iconSize: 26,
+                    onPressed: _busy ? null : _pickAndOpen,
+                    icon: const Icon(Icons.note_add_outlined),
+                  ),
+                if (HistoryService.isSupported)
+                  IconButton(
+                    tooltip: s['history'],
+                    iconSize: 26,
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const HistoryScreen(),
+                            ),
+                          ),
+                    icon: const Icon(Icons.history),
+                  ),
+                IconButton(
+                  tooltip: s['settings'],
+                  iconSize: 26,
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        ),
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(DocumentSession? session) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainer,
+      elevation: 3,
+      shadowColor: scheme.shadow,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BottomToolbar(
+              armedTool: _armedTool,
+              enabled: session != null && !_busy,
+              onToolSelected: _onToolSelected,
+              onSend: _send,
+            ),
+            // Ads pinned at the very bottom, below the toolbar.
+            const AdBanner(),
+          ],
+        ),
       ),
     );
   }
@@ -1084,90 +1215,113 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
             // a coordinate space at every zoom level (comfortable reading +
             // consistent placement).
             Positioned.fill(
-              child: InteractiveViewer(
-                transformationController: _transformation,
-                constrained: false,
-                minScale: 1,
-                maxScale: 6,
-                child: SizedBox(
-                  width: viewportWidth,
-                  height: math.max(docHeight, constraints.maxHeight),
-                  child: Stack(
-                    children: [
-                      // Only pages inside the viewport (+ a preload buffer)
-                      // actually render — a 53-page CAD-drawing PDF used to
-                      // kick off all 53 renders the instant it opened. Pages
-                      // outside the range show a cheap blank placeholder and
-                      // cost nothing until they're scrolled into view.
-                      AnimatedBuilder(
-                        animation: _transformation,
-                        builder: (context, _) {
-                          final visible = _visiblePageIndices(
-                            tops,
-                            heights,
-                            constraints.maxHeight,
-                          );
-                          return Stack(
-                            children: [
-                              for (var i = 0; i < session.pageCount; i++)
-                                Positioned(
-                                  left: _pagePadding,
-                                  top: tops[i],
-                                  width: contentWidth,
-                                  height: heights[i],
-                                  child: visible.contains(i)
-                                      ? _PageItem(
-                                          renderService: _renderService,
-                                          pageIndex: i,
-                                          width: contentWidth,
-                                          height: heights[i],
-                                          onMarkStart: (local, size) =>
-                                              _onMarkStart(i, local, size),
-                                          onMarkUpdate: (local, size) =>
-                                              _onMarkUpdate(i, local, size),
-                                          onMarkEnd: () => _onMarkEnd(i),
-                                        )
-                                      : const _PagePlaceholder(),
-                                ),
-                            ],
-                          );
-                        },
+              child: Listener(
+                onPointerDown: (event) {
+                  if (event.buttons & kMiddleMouseButton != 0) {
+                    setState(() => _middleButtonDown = true);
+                  }
+                },
+                onPointerUp: (_) {
+                  if (_middleButtonDown)
+                    setState(() => _middleButtonDown = false);
+                },
+                onPointerCancel: (_) {
+                  if (_middleButtonDown)
+                    setState(() => _middleButtonDown = false);
+                },
+                child: MouseRegion(
+                  cursor: _middleButtonDown
+                      ? SystemMouseCursors.grabbing
+                      : _ctrlPressed
+                      ? SystemMouseCursors.zoomIn
+                      : MouseCursor.defer,
+                  child: InteractiveViewer(
+                    transformationController: _transformation,
+                    constrained: false,
+                    minScale: 1,
+                    maxScale: _maxZoomScale,
+                    child: SizedBox(
+                      width: viewportWidth,
+                      height: math.max(docHeight, constraints.maxHeight),
+                      child: Stack(
+                        children: [
+                          // Only pages inside the viewport (+ a preload buffer)
+                          // actually render — a 53-page CAD-drawing PDF used to
+                          // kick off all 53 renders the instant it opened. Pages
+                          // outside the range show a cheap blank placeholder and
+                          // cost nothing until they're scrolled into view.
+                          AnimatedBuilder(
+                            animation: _transformation,
+                            builder: (context, _) {
+                              final visible = _visiblePageIndices(
+                                tops,
+                                heights,
+                                constraints.maxHeight,
+                              );
+                              return Stack(
+                                children: [
+                                  for (var i = 0; i < session.pageCount; i++)
+                                    Positioned(
+                                      left: _pagePadding,
+                                      top: tops[i],
+                                      width: contentWidth,
+                                      height: heights[i],
+                                      child: visible.contains(i)
+                                          ? _PageItem(
+                                              renderService: _renderService,
+                                              pageIndex: i,
+                                              width: contentWidth,
+                                              height: heights[i],
+                                              onMarkStart: (local, size) =>
+                                                  _onMarkStart(i, local, size),
+                                              onMarkUpdate: (local, size) =>
+                                                  _onMarkUpdate(i, local, size),
+                                              onMarkEnd: () => _onMarkEnd(i),
+                                              onTap: _toggleChrome,
+                                            )
+                                          : const _PagePlaceholder(),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                          // Live selection rectangle while long-press marking.
+                          if (_markPageIndex != null &&
+                              _markStartN != null &&
+                              _markCurrentN != null)
+                            _buildMarkRect(contentWidth, tops, heights),
+                          ValueListenableBuilder<List<Placement>>(
+                            valueListenable: session.placements,
+                            builder: (context, placements, _) => Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                for (final placement in placements)
+                                  PlacementOverlay(
+                                    key: ObjectKey(placement),
+                                    placement: placement,
+                                    pageRect: Rect.fromLTWH(
+                                      _pagePadding,
+                                      tops[placement.pageIndex],
+                                      contentWidth,
+                                      heights[placement.pageIndex],
+                                    ),
+                                    transformation: _transformation,
+                                    onChanged: () {
+                                      // Whole-booklet groups stay in sync.
+                                      session.syncGroup(placement);
+                                      session.touch();
+                                    },
+                                    onDelete: () => _deletePlacement(placement),
+                                    onEdit: placement.type == PlacementType.note
+                                        ? () => _editNote(placement)
+                                        : null,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      // Live selection rectangle while long-press marking.
-                      if (_markPageIndex != null &&
-                          _markStartN != null &&
-                          _markCurrentN != null)
-                        _buildMarkRect(contentWidth, tops, heights),
-                      ValueListenableBuilder<List<Placement>>(
-                        valueListenable: session.placements,
-                        builder: (context, placements, _) => Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            for (final placement in placements)
-                              PlacementOverlay(
-                                key: ObjectKey(placement),
-                                placement: placement,
-                                pageRect: Rect.fromLTWH(
-                                  _pagePadding,
-                                  tops[placement.pageIndex],
-                                  contentWidth,
-                                  heights[placement.pageIndex],
-                                ),
-                                transformation: _transformation,
-                                onChanged: () {
-                                  // Whole-booklet groups stay in sync.
-                                  session.syncGroup(placement);
-                                  session.touch();
-                                },
-                                onDelete: () => _deletePlacement(placement),
-                                onEdit: placement.type == PlacementType.note
-                                    ? () => _editNote(placement)
-                                    : null,
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -1368,6 +1522,7 @@ class _PageItem extends StatelessWidget {
     required this.onMarkStart,
     required this.onMarkUpdate,
     required this.onMarkEnd,
+    required this.onTap,
   });
 
   final PdfRenderService renderService;
@@ -1377,11 +1532,13 @@ class _PageItem extends StatelessWidget {
   final void Function(Offset local, Size renderedSize) onMarkStart;
   final void Function(Offset local, Size renderedSize) onMarkUpdate;
   final VoidCallback onMarkEnd;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final size = Size(width, height);
     return GestureDetector(
+      onTap: onTap,
       onLongPressStart: (details) => onMarkStart(details.localPosition, size),
       onLongPressMoveUpdate: (details) =>
           onMarkUpdate(details.localPosition, size),

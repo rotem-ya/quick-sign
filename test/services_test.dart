@@ -110,8 +110,9 @@ void main() {
 
   group('ExportService.assembleRasterPdf', () {
     test('builds one image page per input, preserving page size', () {
-      final jpeg = Uint8List.fromList(img.encodeJpg(
-          img.Image(width: 100, height: 141, numChannels: 3)));
+      final jpeg = Uint8List.fromList(
+        img.encodeJpg(img.Image(width: 100, height: 141, numChannels: 3)),
+      );
 
       final bytes = ExportService.assembleRasterPdf(
         pageJpegs: [jpeg, jpeg],
@@ -146,7 +147,10 @@ void main() {
   group('ImportService.appendBlankPage / appendImagePage', () {
     test('appends a blank page with the same size', () {
       final base = Uint8List.fromList(
-          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+        ImportService.wrapImageAsPdf(
+          _pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255)),
+        ),
+      );
       final out = ImportService.appendBlankPage(base);
 
       final doc = PdfDocument(inputBytes: out);
@@ -160,7 +164,10 @@ void main() {
 
     test('appends an image page sized to the image', () {
       final base = Uint8List.fromList(
-          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+        ImportService.wrapImageAsPdf(
+          _pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255)),
+        ),
+      );
       final landscape = _pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255));
       final out = ImportService.appendImagePage(base, landscape);
 
@@ -215,11 +222,19 @@ void main() {
   group('ImportService.mergePdfPages', () {
     test('appends every page of the other PDF, preserving sizes', () {
       final base = Uint8List.fromList(
-          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+        ImportService.wrapImageAsPdf(
+          _pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255)),
+        ),
+      );
       var other = Uint8List.fromList(
-          ImportService.wrapImageAsPdf(_pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255))));
+        ImportService.wrapImageAsPdf(
+          _pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255)),
+        ),
+      );
       other = ImportService.appendImagePage(
-          other, _pngOf(300, 300, img.ColorRgba8(200, 30, 30, 255)));
+        other,
+        _pngOf(300, 300, img.ColorRgba8(200, 30, 30, 255)),
+      );
 
       final out = ImportService.mergePdfPages(base, other);
 
@@ -236,7 +251,10 @@ void main() {
   group('ImportService.appendImagePages', () {
     test('appends each image as its own page, in order', () {
       final base = Uint8List.fromList(
-          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+        ImportService.wrapImageAsPdf(
+          _pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255)),
+        ),
+      );
       final out = ImportService.appendImagePages(base, [
         _pngOf(800, 400, img.ColorRgba8(30, 90, 200, 255)),
         _pngOf(300, 300, img.ColorRgba8(200, 30, 30, 255)),
@@ -255,7 +273,10 @@ void main() {
   group('ImportService.pdfPageCount', () {
     test('reports the number of pages', () {
       final base = Uint8List.fromList(
-          ImportService.wrapImageAsPdf(_pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255))));
+        ImportService.wrapImageAsPdf(
+          _pngOf(400, 600, img.ColorRgba8(250, 250, 250, 255)),
+        ),
+      );
       final withExtra = ImportService.appendBlankPage(base);
       expect(ImportService.pdfPageCount(base), 1);
       expect(ImportService.pdfPageCount(withExtra), 2);
@@ -263,14 +284,18 @@ void main() {
   });
 
   group('StampService.removeWhiteBackground (adaptive)', () {
-    test('removes a grayish photographed-page background, keeps the stamp',
-        () {
+    test('removes a grayish photographed-page background, keeps the stamp', () {
       // Gray page background with a blue stamp square.
       final source = img.Image(width: 120, height: 120, numChannels: 4);
       img.fill(source, color: img.ColorRgba8(196, 192, 185, 255));
-      img.fillRect(source,
-          x1: 40, y1: 40, x2: 79, y2: 79,
-          color: img.ColorRgba8(30, 60, 170, 255));
+      img.fillRect(
+        source,
+        x1: 40,
+        y1: 40,
+        x2: 79,
+        y2: 79,
+        color: img.ColorRgba8(30, 60, 170, 255),
+      );
       final input = Uint8List.fromList(img.encodePng(source));
 
       final output = img.decodePng(StampService.removeWhiteBackground(input))!;
@@ -289,9 +314,14 @@ void main() {
     test('turns white pixels transparent and keeps ink', () {
       final source = img.Image(width: 100, height: 100, numChannels: 4);
       img.fill(source, color: img.ColorRgba8(255, 255, 255, 255));
-      img.fillRect(source,
-          x1: 40, y1: 40, x2: 59, y2: 59,
-          color: img.ColorRgba8(30, 30, 160, 255));
+      img.fillRect(
+        source,
+        x1: 40,
+        y1: 40,
+        x2: 59,
+        y2: 59,
+        color: img.ColorRgba8(30, 30, 160, 255),
+      );
       final input = Uint8List.fromList(img.encodePng(source));
 
       final output = img.decodePng(StampService.removeWhiteBackground(input))!;
@@ -344,18 +374,25 @@ void main() {
       // White image with a dark square only in the top-left quadrant.
       final source = img.Image(width: 200, height: 200, numChannels: 4);
       img.fill(source, color: img.ColorRgba8(255, 255, 255, 255));
-      img.fillRect(source,
-          x1: 20, y1: 20, x2: 59, y2: 59,
-          color: img.ColorRgba8(160, 20, 20, 255));
+      img.fillRect(
+        source,
+        x1: 20,
+        y1: 20,
+        x2: 59,
+        y2: 59,
+        color: img.ColorRgba8(160, 20, 20, 255),
+      );
       final bytes = Uint8List.fromList(img.encodePng(source));
 
-      final out = StampService.cropAndClean(StampCropRequest(
-        bytes: bytes,
-        left: 0,
-        top: 0,
-        right: 0.5,
-        bottom: 0.5,
-      ));
+      final out = StampService.cropAndClean(
+        StampCropRequest(
+          bytes: bytes,
+          left: 0,
+          top: 0,
+          right: 0.5,
+          bottom: 0.5,
+        ),
+      );
 
       final decoded = img.decodePng(out)!;
       // Content-cropped to the 40px square (plus small margin).
@@ -370,8 +407,11 @@ void main() {
       final page = doc.pages.add();
       final font = PdfStandardFont(PdfFontFamily.helvetica, 12);
       for (var i = 0; i < 5; i++) {
-        page.graphics.drawString('Sample body text line $i', font,
-            bounds: ui.Rect.fromLTWH(40, 40.0 + i * 20, 400, 16));
+        page.graphics.drawString(
+          'Sample body text line $i',
+          font,
+          bounds: ui.Rect.fromLTWH(40, 40.0 + i * 20, 400, 16),
+        );
       }
       final bytes = Uint8List.fromList(doc.saveSync());
       doc.dispose();
@@ -431,25 +471,29 @@ void main() {
       );
       // Double border draws an extra inner ring, so it has strictly more
       // opaque pixels than a single outer border alone.
-      expect(await countOpaquePixels(double_),
-          greaterThan(await countOpaquePixels(single)));
+      expect(
+        await countOpaquePixels(double_),
+        greaterThan(await countOpaquePixels(single)),
+      );
       expect(await countOpaquePixels(single), greaterThan(0));
     });
 
-    test('canvas outside the ink is fully transparent — no background fill',
-        () async {
-      final png = await StampDesignerScreen.renderStamp(
-        lines: ['A'],
-        color: const ui.Color(0xFF1B4C9C),
-        shape: StampShape.rectangle,
-        border: StampBorder.double_,
-      );
-      final decoded = img.decodePng(png)!;
-      // Sample a point known to sit between the outer and inner border
-      // rings (never touched by either stroke or by the centered text).
-      final between = decoded.getPixel(decoded.width ~/ 2, 30);
-      expect(between.a, 0);
-    });
+    test(
+      'canvas outside the ink is fully transparent — no background fill',
+      () async {
+        final png = await StampDesignerScreen.renderStamp(
+          lines: ['A'],
+          color: const ui.Color(0xFF1B4C9C),
+          shape: StampShape.rectangle,
+          border: StampBorder.double_,
+        );
+        final decoded = img.decodePng(png)!;
+        // Sample a point known to sit between the outer and inner border
+        // rings (never touched by either stroke or by the centered text).
+        final between = decoded.getPixel(decoded.width ~/ 2, 30);
+        expect(between.a, 0);
+      },
+    );
   });
 
   group('HistoryEntry.toJson/fromJson', () {
@@ -491,8 +535,7 @@ void main() {
       }
     });
 
-    test('record → list round-trips a permanent copy, newest first',
-        () async {
+    test('record → list round-trips a permanent copy, newest first', () async {
       final service = HistoryService();
       final first = await service.record(
         bytes: Uint8List.fromList([1, 2, 3]),
@@ -552,8 +595,7 @@ void main() {
       expect(await service.readBytes(entry), bytes);
     });
 
-    test('list prunes entries whose file vanished outside the app',
-        () async {
+    test('list prunes entries whose file vanished outside the app', () async {
       final service = HistoryService();
       final entry = await service.record(
         bytes: Uint8List.fromList([1]),
@@ -570,8 +612,10 @@ void main() {
       final stamp = _pngOf(200, 100, img.ColorRgba8(200, 40, 40, 255));
       final signature = _pngOf(80, 40, img.ColorRgba8(20, 20, 160, 255));
 
-      final out =
-          await StampService.compositeSignatureOverStamp(signature, stamp);
+      final out = await StampService.compositeSignatureOverStamp(
+        signature,
+        stamp,
+      );
       final decoded = img.decodePng(out)!;
 
       expect(decoded.width, 200);
@@ -669,7 +713,11 @@ void main() {
       expect(signatures.single.name, 'חתימה 1');
 
       final newBytes = _pngOf(50, 25, img.ColorRgba8(10, 10, 10, 255));
-      await service.update(added.id, name: 'חתימה מעודכנת', imageBytes: newBytes);
+      await service.update(
+        added.id,
+        name: 'חתימה מעודכנת',
+        imageBytes: newBytes,
+      );
       signatures = await service.list(type: MarkType.signature);
       expect(signatures.single.name, 'חתימה מעודכנת');
       expect(signatures.single.imageBytes, newBytes);
@@ -727,11 +775,67 @@ void main() {
       var stamps = await service.list(type: MarkType.stamp);
       expect(stamps.single.design, isNotNull);
 
-      await service.update(added.id,
-          imageBytes: _pngOf(10, 10, img.ColorRgba8(2, 2, 2, 255)),
-          clearDesign: true);
+      await service.update(
+        added.id,
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(2, 2, 2, 255)),
+        clearDesign: true,
+      );
       stamps = await service.list(type: MarkType.stamp);
       expect(stamps.single.design, isNull);
+    });
+
+    test('supports combo marks alongside signatures and stamps', () async {
+      final service = MarksService();
+      await service.add(
+        type: MarkType.combo,
+        name: 'חתימה+חותמת 1',
+        imageBytes: _pngOf(60, 30, img.ColorRgba8(5, 5, 5, 255)),
+      );
+      final combos = await service.list(type: MarkType.combo);
+      expect(combos, hasLength(1));
+      expect(combos.single.type, MarkType.combo);
+      final all = await service.list();
+      expect(all, hasLength(1));
+    });
+
+    test('default: set/get/clear, independent per type', () async {
+      final service = MarksService();
+      final signature = await service.add(
+        type: MarkType.signature,
+        name: 'חתימה',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(1, 1, 1, 255)),
+      );
+      final stamp = await service.add(
+        type: MarkType.stamp,
+        name: 'חותמת',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(2, 2, 2, 255)),
+      );
+
+      expect(await service.getDefault(MarkType.signature), isNull);
+
+      await service.setDefault(MarkType.signature, signature.id);
+      await service.setDefault(MarkType.stamp, stamp.id);
+      expect((await service.getDefault(MarkType.signature))?.id, signature.id);
+      expect((await service.getDefault(MarkType.stamp))?.id, stamp.id);
+
+      await service.clearDefault(MarkType.signature);
+      expect(await service.getDefault(MarkType.signature), isNull);
+      // The stamp default is untouched by clearing the signature default.
+      expect((await service.getDefault(MarkType.stamp))?.id, stamp.id);
+    });
+
+    test('deleting a mark clears it as a default', () async {
+      final service = MarksService();
+      final signature = await service.add(
+        type: MarkType.signature,
+        name: 'חתימה',
+        imageBytes: _pngOf(10, 10, img.ColorRgba8(1, 1, 1, 255)),
+      );
+      await service.setDefault(MarkType.signature, signature.id);
+      expect((await service.getDefault(MarkType.signature))?.id, signature.id);
+
+      await service.delete(signature.id);
+      expect(await service.getDefault(MarkType.signature), isNull);
     });
   });
 }

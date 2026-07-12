@@ -19,7 +19,6 @@ import '../services/pdf_render_service.dart';
 import '../services/print_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
-import '../services/stamp_service.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/bottom_toolbar.dart';
 import '../widgets/note_sheet.dart';
@@ -28,7 +27,6 @@ import '../widgets/signature_sheet.dart';
 import 'history_screen.dart';
 import 'page_manager_screen.dart';
 import 'settings_screen.dart';
-import 'stamp_setup_screen.dart';
 
 /// The single work screen: zoomable document pages, placement overlays,
 /// bottom toolbar with the ad banner underneath.
@@ -108,8 +106,7 @@ class _WorkScreenState extends State<WorkScreen> {
 
   // ── Import ────────────────────────────────────────────────────────────────
 
-  Future<void> _pickAndOpen() =>
-      _openWith(() => _importService.pickAndOpen());
+  Future<void> _pickAndOpen() => _openWith(() => _importService.pickAndOpen());
 
   Future<void> _openSharedPath(String path) async {
     if (!ImportService.isSupported(path)) {
@@ -170,7 +167,9 @@ class _WorkScreenState extends State<WorkScreen> {
     setState(() {
       _markPageIndex = pageIndex;
       _markStartN = Offset(
-          local.dx / pageSize.width, local.dy / pageSize.height);
+        local.dx / pageSize.width,
+        local.dy / pageSize.height,
+      );
       _markCurrentN = _markStartN;
     });
   }
@@ -200,8 +199,9 @@ class _WorkScreenState extends State<WorkScreen> {
     final ny = rect.center.dy;
     // A meaningful drag (≥ 4% of page width) sets the placement size;
     // a plain long-press uses the proportional defaults.
-    final double? widthOverride =
-        rect.width >= 0.04 ? rect.width.clamp(0.05, 0.95) : null;
+    final double? widthOverride = rect.width >= 0.04
+        ? rect.width.clamp(0.05, 0.95)
+        : null;
 
     switch (_armedTool) {
       case ToolbarTool.signature:
@@ -226,68 +226,78 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Future<void> _placeSignature(
-      int pageIndex, double nx, double ny, double? widthOverride) async {
+    int pageIndex,
+    double nx,
+    double ny,
+    double? widthOverride,
+  ) async {
     final session = _session!;
     final savedSignatures = await _marksService.list(type: MarkType.signature);
-    final savedStamps = await _marksService.list(type: MarkType.stamp);
+    final savedCombos = await _marksService.list(type: MarkType.combo);
+    // A combo default wins — it's the more specific, deliberately-chosen
+    // pick — otherwise fall back to a plain-signature default.
+    final defaultMark =
+        await _marksService.getDefault(MarkType.combo) ??
+        await _marksService.getDefault(MarkType.signature);
     if (!mounted) return;
-    final result = await showSignatureSheet(
-      context,
-      savedSignatures: savedSignatures,
-      savedStamps: savedStamps,
-      showAllPagesOption: session.pageCount > 1,
-    );
-    if (result == null || !mounted) return;
 
-    if (result.isNewDrawing) {
-      // Every fresh drawing joins the library — organize/rename/delete it
-      // later from Settings.
-      unawaited(_marksService.add(
-        type: MarkType.signature,
-        name: '${S.of(context)['sign']} ${savedSignatures.length + 1}',
-        imageBytes: result.bytes,
-      ));
+    SavedMark chosen;
+    var allPages = false;
+    if (defaultMark != null) {
+      chosen = defaultMark;
+    } else if (savedSignatures.isEmpty && savedCombos.isEmpty) {
+      _promptAddMark(MarkType.signature);
+      return;
+    } else {
+      final result = await showMarkPickerSheet(
+        context,
+        marks: [...savedSignatures, ...savedCombos],
+        showAllPagesOption: session.pageCount > 1,
+      );
+      if (result == null || !mounted) return;
+      chosen = result.mark;
+      allPages = result.allPages;
     }
-    var bytes = result.bytes;
-    if (result.withStamp && savedStamps.isNotEmpty) {
-      // Combines with the most recently saved stamp — picking a specific
-      // one among several is still available via that stamp's own chip.
-      bytes = await StampService.compositeSignatureOverStamp(
-          bytes, savedStamps.last.imageBytes);
-    }
-    final pages = result.allPages
+
+    final isCombo = chosen.type == MarkType.combo;
+    final pages = allPages
         ? List.generate(session.pageCount, (i) => i)
         : [pageIndex];
     await _addImagePlacement(
       type: PlacementType.signature,
-      bytes: bytes,
+      bytes: chosen.imageBytes,
       pages: pages,
       nx: nx,
       ny: ny,
-      widthFraction: widthOverride ??
-          (result.withStamp
-              ? _comboWidthFraction
-              : _signatureWidthFraction),
+      widthFraction:
+          widthOverride ??
+          (isCombo ? _comboWidthFraction : _signatureWidthFraction),
     );
   }
 
   Future<void> _placeStamp(
-      int pageIndex, double nx, double ny, double? widthOverride) async {
+    int pageIndex,
+    double nx,
+    double ny,
+    double? widthOverride,
+  ) async {
     final session = _session!;
     final stamps = await _marksService.list(type: MarkType.stamp);
+    final defaultStamp = await _marksService.getDefault(MarkType.stamp);
     if (!mounted) return;
-    Uint8List? bytes;
-    if (stamps.isEmpty) {
-      final mark = await Navigator.of(context).push<SavedMark>(
-        MaterialPageRoute(builder: (_) => const StampSetupScreen()),
-      );
-      bytes = mark?.imageBytes;
-    } else if (stamps.length == 1) {
-      bytes = stamps.single.imageBytes;
-    } else {
-      bytes = await _pickStamp(stamps);
+    Uint8List? bytes = defaultStamp?.imageBytes;
+    if (bytes == null) {
+      if (stamps.isEmpty) {
+        _promptAddMark(MarkType.stamp);
+        return;
+      } else if (stamps.length == 1) {
+        bytes = stamps.single.imageBytes;
+      } else {
+        final result = await showMarkPickerSheet(context, marks: stamps);
+        if (result == null || !mounted) return;
+        bytes = result.mark.imageBytes;
+      }
     }
-    if (bytes == null) return;
     final placed = await _addImagePlacement(
       type: PlacementType.stamp,
       bytes: bytes,
@@ -302,83 +312,73 @@ class _WorkScreenState extends State<WorkScreen> {
       final original = placed.first;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          content:
-              Text(s['stampPlaced'], style: const TextStyle(fontSize: 16)),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: s['copyToAllPages'],
-            onPressed: () {
-              final gid = _nextGroupId++;
-              original.groupId = gid;
-              final copies = <Placement>[];
-              for (var page = 0; page < session.pageCount; page++) {
-                if (page == original.pageIndex) continue;
-                copies.add(Placement(
-                  type: PlacementType.stamp,
-                  pageIndex: page,
-                  nx: original.nx,
-                  ny: original.ny,
-                  widthFraction: original.widthFraction,
-                  aspectRatio: original.aspectRatio,
-                  imageBytes: original.imageBytes,
-                  groupId: gid,
-                ));
-              }
-              session.addAll(copies);
-            },
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              s['stampPlaced'],
+              style: const TextStyle(fontSize: 16),
+            ),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: s['copyToAllPages'],
+              onPressed: () {
+                final gid = _nextGroupId++;
+                original.groupId = gid;
+                final copies = <Placement>[];
+                for (var page = 0; page < session.pageCount; page++) {
+                  if (page == original.pageIndex) continue;
+                  copies.add(
+                    Placement(
+                      type: PlacementType.stamp,
+                      pageIndex: page,
+                      nx: original.nx,
+                      ny: original.ny,
+                      widthFraction: original.widthFraction,
+                      aspectRatio: original.aspectRatio,
+                      imageBytes: original.imageBytes,
+                      groupId: gid,
+                    ),
+                  );
+                }
+                session.addAll(copies);
+              },
+            ),
           ),
-        ));
+        );
     }
   }
 
-  /// Quick chooser when more than one stamp is saved — thumbnails + an
-  /// "add new" tile, so having a library never makes the common case slower.
-  Future<Uint8List?> _pickStamp(List<SavedMark> stamps) async {
+  /// Nothing pre-prepared for this type yet — placing on the document never
+  /// opens a camera/gallery inline; preparing marks only happens in Settings.
+  void _promptAddMark(MarkType type) {
     final s = S.of(context);
-    return showModalBottomSheet<Uint8List>(
-      context: context,
-      useSafeArea: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final mark in stamps)
-                ActionChip(
-                  avatar: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Image.memory(mark.imageBytes, fit: BoxFit.contain),
-                  ),
-                  label: Text(mark.name),
-                  onPressed: () => Navigator.of(sheetContext).pop(mark.imageBytes),
-                ),
-              ActionChip(
-                avatar: const Icon(Icons.add, size: 20),
-                label: Text(s['newMark']),
-                onPressed: () async {
-                  // Push on top of the still-open sheet, then resolve the
-                  // sheet with whatever StampSetupScreen returns.
-                  final mark = await Navigator.of(context).push<SavedMark>(
-                    MaterialPageRoute(
-                        builder: (_) => const StampSetupScreen()),
-                  );
-                  if (!sheetContext.mounted) return;
-                  Navigator.of(sheetContext).pop(mark?.imageBytes);
-                },
-              ),
-            ],
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            type == MarkType.stamp
+                ? s['noSavedStamps']
+                : s['noSavedSignatures'],
+            style: const TextStyle(fontSize: 16),
+          ),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: s['settings'],
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
           ),
         ),
-      ),
-    );
+      );
   }
 
   Future<void> _placeNote(
-      int pageIndex, double nx, double ny, double? widthOverride) async {
+    int pageIndex,
+    double nx,
+    double ny,
+    double? widthOverride,
+  ) async {
     final s = S.of(context);
     final name = await _settingsService.getName();
     if (!mounted) return;
@@ -392,14 +392,16 @@ class _WorkScreenState extends State<WorkScreen> {
       ],
     );
     if (text == null || text.isEmpty) return;
-    _session?.addPlacement(Placement(
-      type: PlacementType.note,
-      pageIndex: pageIndex,
-      nx: nx,
-      ny: ny,
-      widthFraction: widthOverride ?? _noteWidthFractionFor(pageIndex),
-      text: text,
-    ));
+    _session?.addPlacement(
+      Placement(
+        type: PlacementType.note,
+        pageIndex: pageIndex,
+        nx: nx,
+        ny: ny,
+        widthFraction: widthOverride ?? _noteWidthFractionFor(pageIndex),
+        text: text,
+      ),
+    );
   }
 
   Future<void> _editNote(Placement placement) async {
@@ -427,16 +429,18 @@ class _WorkScreenState extends State<WorkScreen> {
     final gid = pages.length > 1 ? _nextGroupId++ : null;
     final placed = <Placement>[];
     for (final page in pages) {
-      placed.add(Placement(
-        type: type,
-        pageIndex: page,
-        nx: nx,
-        ny: ny,
-        widthFraction: widthFraction,
-        aspectRatio: aspect,
-        imageBytes: bytes,
-        groupId: gid,
-      ));
+      placed.add(
+        Placement(
+          type: type,
+          pageIndex: page,
+          nx: nx,
+          ny: ny,
+          widthFraction: widthFraction,
+          aspectRatio: aspect,
+          imageBytes: bytes,
+          groupId: gid,
+        ),
+      );
     }
     _session?.addAll(placed);
     return placed;
@@ -469,15 +473,13 @@ class _WorkScreenState extends State<WorkScreen> {
     final target = (scale * factor).clamp(1.0, 6.0);
     if (target == scale) return;
     final f = target / scale;
-    final center =
-        Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final center = Offset(_viewportSize.width / 2, _viewportSize.height / 2);
     final t = matrix.getTranslation();
     var tx = center.dx - (center.dx - t.x) * f;
     var ty = center.dy - (center.dy - t.y) * f;
     // Keep the document inside the viewport.
     tx = tx.clamp(_viewportSize.width * (1 - target), 0.0);
-    final minY =
-        math.min(0.0, _viewportSize.height - _docHeight * target);
+    final minY = math.min(0.0, _viewportSize.height - _docHeight * target);
     ty = ty.clamp(minY, 0.0);
     _transformation.value = Matrix4.identity()
       ..translateByDouble(tx, ty, 0, 1)
@@ -497,14 +499,16 @@ class _WorkScreenState extends State<WorkScreen> {
     final s = S.of(context);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
-          label: s['undo'],
-          onPressed: () => session.addAll(removed),
+      ..showSnackBar(
+        SnackBar(
+          content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: s['undo'],
+            onPressed: () => session.addAll(removed),
+          ),
         ),
-      ));
+      );
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -557,11 +561,13 @@ class _WorkScreenState extends State<WorkScreen> {
       // Permanent local copy, independent of the transient share/print file
       // — kept in History until the user deletes it themselves.
       if (HistoryService.isSupported) {
-        unawaited(_historyService.record(
-          bytes: signedBytes,
-          fileName: session.signedFileName,
-          pageCount: session.pageCount,
-        ));
+        unawaited(
+          _historyService.record(
+            bytes: signedBytes,
+            fileName: session.signedFileName,
+            pageCount: session.pageCount,
+          ),
+        );
       }
       if (!mounted) return;
       setState(() => _busy = false);
@@ -590,18 +596,29 @@ class _WorkScreenState extends State<WorkScreen> {
             if (defaultFolder != null)
               ListTile(
                 leading: Icon(Icons.bolt, size: 28, color: Colors.amber[800]),
-                title: Text(s['saveToDefaultFolder'],
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w600)),
-                subtitle: Text(defaultFolder,
-                    style: const TextStyle(fontSize: 13)),
+                title: Text(
+                  s['saveToDefaultFolder'],
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  defaultFolder,
+                  style: const TextStyle(fontSize: 13),
+                ),
                 minTileHeight: 56,
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
-                  final ok =
-                      await _folderService.saveFile(signedBytes, fileName);
-                  _snack(ok ? '${s['savedToDefaultFolder']} — $defaultFolder'
-                      : s['exportError']);
+                  final ok = await _folderService.saveFile(
+                    signedBytes,
+                    fileName,
+                  );
+                  _snack(
+                    ok
+                        ? '${s['savedToDefaultFolder']} — $defaultFolder'
+                        : s['exportError'],
+                  );
                 },
               ),
             if (ShareService.canShare)
@@ -630,8 +647,7 @@ class _WorkScreenState extends State<WorkScreen> {
               minTileHeight: 56,
               onTap: () async {
                 Navigator.of(sheetContext).pop();
-                final saved =
-                    await _shareService.saveAs(signedBytes, fileName);
+                final saved = await _shareService.saveAs(signedBytes, fileName);
                 if (saved) _snack(s['copySaved']);
               },
             ),
@@ -654,10 +670,12 @@ class _WorkScreenState extends State<WorkScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message, style: const TextStyle(fontSize: 16)),
-        duration: const Duration(seconds: 2),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message, style: const TextStyle(fontSize: 16)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────
@@ -709,9 +727,8 @@ class _WorkScreenState extends State<WorkScreen> {
               onPressed: _busy
                   ? null
                   : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => const HistoryScreen()),
-                      ),
+                      MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                    ),
               icon: const Icon(Icons.history),
             ),
           IconButton(
@@ -720,9 +737,8 @@ class _WorkScreenState extends State<WorkScreen> {
             onPressed: _busy
                 ? null
                 : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const SettingsScreen()),
-                    ),
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
@@ -772,15 +788,21 @@ class _WorkScreenState extends State<WorkScreen> {
                 color: scheme.primaryContainer,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.draw_outlined,
-                  size: 52, color: scheme.onPrimaryContainer),
+              child: Icon(
+                Icons.draw_outlined,
+                size: 52,
+                color: scheme.onPrimaryContainer,
+              ),
             ),
             const SizedBox(height: 22),
             Text(
               s['emptyTitle'],
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.w600, height: 1.2),
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -792,11 +814,15 @@ class _WorkScreenState extends State<WorkScreen> {
             FilledButton.icon(
               onPressed: _pickAndOpen,
               icon: const Icon(Icons.file_open_outlined, size: 28),
-              label:
-                  Text(s['openDocument'], style: const TextStyle(fontSize: 19)),
+              label: Text(
+                s['openDocument'],
+                style: const TextStyle(fontSize: 19),
+              ),
               style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 18),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 18,
+                ),
               ),
             ),
             if (ShareService.canShare) ...[
@@ -804,13 +830,18 @@ class _WorkScreenState extends State<WorkScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.ios_share,
-                      size: 18, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.ios_share,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     s['shareHint'],
                     style: TextStyle(
-                        fontSize: 15, color: scheme.onSurfaceVariant),
+                      fontSize: 15,
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -858,7 +889,10 @@ class _WorkScreenState extends State<WorkScreen> {
                         animation: _transformation,
                         builder: (context, _) {
                           final visible = _visiblePageIndices(
-                              tops, heights, constraints.maxHeight);
+                            tops,
+                            heights,
+                            constraints.maxHeight,
+                          );
                           return Stack(
                             children: [
                               for (var i = 0; i < session.pageCount; i++)
@@ -955,10 +989,15 @@ class _WorkScreenState extends State<WorkScreen> {
                     animation: _transformation,
                     builder: (context, _) {
                       final page = _currentPage(
-                          tops, heights, constraints.maxHeight);
+                        tops,
+                        heights,
+                        constraints.maxHeight,
+                      );
                       return Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 5),
+                          horizontal: 12,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xB3000000),
                           borderRadius: BorderRadius.circular(20),
@@ -966,7 +1005,9 @@ class _WorkScreenState extends State<WorkScreen> {
                         child: Text(
                           '${page + 1} / ${session.pageCount}',
                           style: const TextStyle(
-                              color: Colors.white, fontSize: 13),
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
                         ),
                       );
                     },
@@ -989,7 +1030,10 @@ class _WorkScreenState extends State<WorkScreen> {
   /// The translucent rectangle drawn while the user long-press-drags to mark
   /// where (and how big) the placement should be.
   Widget _buildMarkRect(
-      double contentWidth, List<double> tops, List<double> heights) {
+    double contentWidth,
+    List<double> tops,
+    List<double> heights,
+  ) {
     final page = _markPageIndex!;
     final rect = Rect.fromPoints(_markStartN!, _markCurrentN!);
     final scheme = Theme.of(context).colorScheme;
@@ -1012,7 +1056,10 @@ class _WorkScreenState extends State<WorkScreen> {
   /// The page whose content is at the viewport center, derived from the
   /// InteractiveViewer transform.
   int _currentPage(
-      List<double> tops, List<double> heights, double viewportHeight) {
+    List<double> tops,
+    List<double> heights,
+    double viewportHeight,
+  ) {
     final matrix = _transformation.value;
     final scale = matrix.getMaxScaleOnAxis();
     final translationY = matrix.getTranslation().y;
@@ -1028,7 +1075,10 @@ class _WorkScreenState extends State<WorkScreen> {
   /// pages are actually rendered — the rest cost nothing until they scroll
   /// into range, which is what keeps a 50+ page document fast to open.
   Set<int> _visiblePageIndices(
-      List<double> tops, List<double> heights, double viewportHeight) {
+    List<double> tops,
+    List<double> heights,
+    double viewportHeight,
+  ) {
     final matrix = _transformation.value;
     final scale = matrix.getMaxScaleOnAxis();
     final translationY = matrix.getTranslation().y;
@@ -1057,9 +1107,7 @@ class _PagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(color: Colors.white),
-    );
+    return const DecoratedBox(decoration: BoxDecoration(color: Colors.white));
   }
 }
 
@@ -1088,8 +1136,7 @@ class _PageItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = Size(width, height);
     return GestureDetector(
-      onLongPressStart: (details) =>
-          onMarkStart(details.localPosition, size),
+      onLongPressStart: (details) => onMarkStart(details.localPosition, size),
       onLongPressMoveUpdate: (details) =>
           onMarkUpdate(details.localPosition, size),
       onLongPressEnd: (_) => onMarkEnd(),

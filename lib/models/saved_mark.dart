@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'stamp_design.dart';
 
-enum MarkType { signature, stamp }
+enum MarkType { signature, stamp, combo }
 
 /// One named, saved signature or stamp — the app supports any number of
 /// each, not just one of each.

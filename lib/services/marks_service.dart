@@ -17,6 +17,7 @@ import 'stamp_service.dart';
 class MarksService {
   static const _key = 'saved_marks_v1';
   static const _migratedKey = 'saved_marks_migrated_v1';
+  static const _defaultKeyPrefix = 'default_mark_id_v1_';
 
   Future<List<SavedMark>> list({MarkType? type}) async {
     await _migrateLegacyIfNeeded();
@@ -67,12 +68,41 @@ class MarksService {
   Future<void> delete(String id) async {
     final current = await list();
     await _writeAll(current.where((m) => m.id != id).toList());
+    // A deleted mark can't stay anyone's default.
+    final prefs = await SharedPreferences.getInstance();
+    for (final type in MarkType.values) {
+      final key = '$_defaultKeyPrefix${type.name}';
+      if (prefs.getString(key) == id) await prefs.remove(key);
+    }
   }
 
   /// Re-adds a mark removed by [delete] — backs the delete-snackbar "Undo".
   Future<void> restore(SavedMark mark) async {
     final current = await list();
     await _writeAll([...current, mark]);
+  }
+
+  /// The one-tap default for a mark type (signature / stamp / combo), if any
+  /// — placing on the document uses it directly, skipping the picker.
+  Future<SavedMark?> getDefault(MarkType type) async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString('$_defaultKeyPrefix${type.name}');
+    if (id == null) return null;
+    final marks = await list(type: type);
+    for (final mark in marks) {
+      if (mark.id == id) return mark;
+    }
+    return null; // stale reference (mark deleted outside delete()) — ignore.
+  }
+
+  Future<void> setDefault(MarkType type, String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_defaultKeyPrefix${type.name}', id);
+  }
+
+  Future<void> clearDefault(MarkType type) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_defaultKeyPrefix${type.name}');
   }
 
   Future<List<SavedMark>> _readAll() async {
@@ -91,7 +121,9 @@ class MarksService {
   Future<void> _writeAll(List<SavedMark> marks) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _key, jsonEncode(marks.map((m) => m.toJson()).toList()));
+      _key,
+      jsonEncode(marks.map((m) => m.toJson()).toList()),
+    );
   }
 
   /// One-time upgrade from the old single-signature/single-stamp storage
@@ -109,20 +141,24 @@ class MarksService {
 
     final existing = await _readAll();
     if (signature != null) {
-      existing.add(SavedMark(
-        id: 'legacy-signature',
-        type: MarkType.signature,
-        name: 'החתימה שלי',
-        imageBytes: signature,
-      ));
+      existing.add(
+        SavedMark(
+          id: 'legacy-signature',
+          type: MarkType.signature,
+          name: 'החתימה שלי',
+          imageBytes: signature,
+        ),
+      );
     }
     if (stamp != null) {
-      existing.add(SavedMark(
-        id: 'legacy-stamp',
-        type: MarkType.stamp,
-        name: 'החותמת שלי',
-        imageBytes: stamp,
-      ));
+      existing.add(
+        SavedMark(
+          id: 'legacy-stamp',
+          type: MarkType.stamp,
+          name: 'החותמת שלי',
+          imageBytes: stamp,
+        ),
+      );
     }
     await _writeAll(existing);
     await legacy.removeSignature();

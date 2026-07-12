@@ -7,6 +7,7 @@ import '../services/default_folder_service.dart';
 import '../services/marks_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
+import '../services/stamp_service.dart';
 import '../widgets/signature_sheet.dart';
 import '../widgets/transparency_checkerboard.dart';
 import 'stamp_designer_screen.dart';
@@ -30,6 +31,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _nameController = TextEditingController();
   List<SavedMark> _signatures = [];
   List<SavedMark> _stamps = [];
+  List<SavedMark> _combos = [];
+  String? _defaultSignatureId;
+  String? _defaultStampId;
+  String? _defaultComboId;
   String? _folderName;
   bool _loaded = false;
 
@@ -43,12 +48,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final name = await _settings.getName();
     final signatures = await _marksService.list(type: MarkType.signature);
     final stamps = await _marksService.list(type: MarkType.stamp);
+    final combos = await _marksService.list(type: MarkType.combo);
+    final defaultSignature = await _marksService.getDefault(MarkType.signature);
+    final defaultStamp = await _marksService.getDefault(MarkType.stamp);
+    final defaultCombo = await _marksService.getDefault(MarkType.combo);
     final folderName = await _folderService.folderName();
     if (!mounted) return;
     setState(() {
       _nameController.text = name ?? '';
       _signatures = signatures;
       _stamps = stamps;
+      _combos = combos;
+      _defaultSignatureId = defaultSignature?.id;
+      _defaultStampId = defaultStamp?.id;
+      _defaultComboId = defaultCombo?.id;
       _folderName = folderName;
       _loaded = true;
     });
@@ -129,13 +142,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
       if (result == null || !mounted) return;
-      await _marksService.update(mark.id,
-          imageBytes: result.bytes, design: result.design);
+      await _marksService.update(
+        mark.id,
+        imageBytes: result.bytes,
+        design: result.design,
+      );
     } else {
       final updated = await Navigator.of(context).push<SavedMark>(
-        MaterialPageRoute(
-          builder: (_) => StampSetupScreen(editingMark: mark),
-        ),
+        MaterialPageRoute(builder: (_) => StampSetupScreen(editingMark: mark)),
       );
       if (updated == null) return;
     }
@@ -162,8 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(s['cancel']),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text),
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
             child: Text(s['done']),
           ),
         ],
@@ -176,6 +189,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _load();
   }
 
+  /// Picks an existing saved signature + stamp and saves the pre-composited
+  /// pair as its own mark — placing it on a document needs no runtime
+  /// combining, just picking this one item.
+  Future<void> _addCombo() async {
+    final s = S.of(context);
+    if (_signatures.isEmpty || _stamps.isEmpty) {
+      _snack(s['comboNeedsBoth']);
+      return;
+    }
+    final picked = await showDialog<_ComboPick>(
+      context: context,
+      builder: (_) =>
+          _ComboPickerDialog(signatures: _signatures, stamps: _stamps),
+    );
+    if (picked == null) return;
+    final bytes = await StampService.compositeSignatureOverStamp(
+      picked.signature.imageBytes,
+      picked.stamp.imageBytes,
+    );
+    if (!mounted) return;
+    await _marksService.add(
+      type: MarkType.combo,
+      name: '${s['sign']}+${s['stamp']} ${_combos.length + 1}',
+      imageBytes: bytes,
+    );
+    await _load();
+  }
+
+  Future<void> _editCombo(SavedMark mark) async {
+    final picked = await showDialog<_ComboPick>(
+      context: context,
+      builder: (_) =>
+          _ComboPickerDialog(signatures: _signatures, stamps: _stamps),
+    );
+    if (picked == null) return;
+    final bytes = await StampService.compositeSignatureOverStamp(
+      picked.signature.imageBytes,
+      picked.stamp.imageBytes,
+    );
+    if (!mounted) return;
+    await _marksService.update(mark.id, imageBytes: bytes);
+    await _load();
+  }
+
+  Future<void> _toggleDefault(SavedMark mark, String? currentDefaultId) async {
+    if (currentDefaultId == mark.id) {
+      await _marksService.clearDefault(mark.type);
+    } else {
+      await _marksService.setDefault(mark.type, mark.id);
+    }
+    await _load();
+  }
+
   Future<void> _delete(SavedMark mark) async {
     final s = S.of(context);
     await _marksService.delete(mark.id);
@@ -183,17 +249,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
-          label: s['undo'],
-          onPressed: () async {
-            await _marksService.restore(mark);
-            await _load();
-          },
+      ..showSnackBar(
+        SnackBar(
+          content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: s['undo'],
+            onPressed: () async {
+              await _marksService.restore(mark);
+              await _load();
+            },
+          ),
         ),
-      ));
+      );
   }
 
   void _snack(String message) {
@@ -234,6 +302,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     editIcon: Icons.draw_outlined,
                     editTooltip: s['redrawSignature'],
                     onDelete: () => _delete(mark),
+                    isDefault: mark.id == _defaultSignatureId,
+                    onToggleDefault: () =>
+                        _toggleDefault(mark, _defaultSignatureId),
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -248,10 +319,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     editIcon: Icons.edit_outlined,
                     editTooltip: s['edit'],
                     onDelete: () => _delete(mark),
+                    isDefault: mark.id == _defaultStampId,
+                    onToggleDefault: () =>
+                        _toggleDefault(mark, _defaultStampId),
                   ),
                   const SizedBox(height: 8),
                 ],
                 _AddMarkTile(label: s['addStamp'], onTap: _addStamp),
+                const SizedBox(height: 24),
+                _SectionTitle(s['savedCombos']),
+                Text(
+                  s['combosHint'],
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final mark in _combos) ...[
+                  _MarkTile(
+                    mark: mark,
+                    onRename: () => _rename(mark),
+                    onEdit: () => _editCombo(mark),
+                    editIcon: Icons.edit_outlined,
+                    editTooltip: s['edit'],
+                    onDelete: () => _delete(mark),
+                    isDefault: mark.id == _defaultComboId,
+                    onToggleDefault: () =>
+                        _toggleDefault(mark, _defaultComboId),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _AddMarkTile(label: s['addCombo'], onTap: _addCombo),
                 if (DefaultFolderService.isSupported) ...[
                   const SizedBox(height: 24),
                   _SectionTitle(s['defaultFolder']),
@@ -261,16 +360,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? ListTile(
                             leading: const Icon(Icons.folder_open_outlined),
                             title: Text(s['chooseFolder']),
-                            subtitle: Text(s['defaultFolderHint'],
-                                style: const TextStyle(fontSize: 13)),
+                            subtitle: Text(
+                              s['defaultFolderHint'],
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             onTap: _pickFolder,
                           )
                         : ListTile(
-                            leading: Icon(Icons.folder,
-                                color: scheme.primary),
+                            leading: Icon(Icons.folder, color: scheme.primary),
                             title: Text(_folderName!),
-                            subtitle: Text(s['savesHereHint'],
-                                style: const TextStyle(fontSize: 13)),
+                            subtitle: Text(
+                              s['savesHereHint'],
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -282,8 +384,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 IconButton(
                                   tooltip: s['removeFolder'],
                                   onPressed: _clearFolder,
-                                  icon: Icon(Icons.close,
-                                      color: scheme.error),
+                                  icon: Icon(Icons.close, color: scheme.error),
                                 ),
                               ],
                             ),
@@ -299,8 +400,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ListTile(
                         leading: const Icon(Icons.upload_file_outlined),
                         title: Text(s['exportSettings']),
-                        subtitle: Text(s['exportSettingsSub'],
-                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(
+                          s['exportSettingsSub'],
+                          style: const TextStyle(fontSize: 13),
+                        ),
                         onTap: _exportBackup,
                       ),
                       const Divider(height: 1),
@@ -320,8 +423,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        Icon(Icons.verified_user_outlined,
-                            color: scheme.primary),
+                        Icon(
+                          Icons.verified_user_outlined,
+                          color: scheme.primary,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -372,6 +477,8 @@ class _MarkTile extends StatelessWidget {
     required this.editIcon,
     required this.editTooltip,
     required this.onDelete,
+    required this.isDefault,
+    required this.onToggleDefault,
   });
 
   final SavedMark mark;
@@ -380,6 +487,8 @@ class _MarkTile extends StatelessWidget {
   final IconData editIcon;
   final String editTooltip;
   final VoidCallback onDelete;
+  final bool isDefault;
+  final VoidCallback onToggleDefault;
 
   @override
   Widget build(BuildContext context) {
@@ -387,6 +496,7 @@ class _MarkTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: EdgeInsets.zero,
+      color: isDefault ? scheme.primaryContainer.withValues(alpha: 0.35) : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -402,8 +512,7 @@ class _MarkTile extends StatelessWidget {
                 child: TransparencyCheckerboard(
                   child: Padding(
                     padding: const EdgeInsets.all(4),
-                    child:
-                        Image.memory(mark.imageBytes, fit: BoxFit.contain),
+                    child: Image.memory(mark.imageBytes, fit: BoxFit.contain),
                   ),
                 ),
               ),
@@ -418,7 +527,9 @@ class _MarkTile extends StatelessWidget {
                       child: Text(
                         mark.name,
                         style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w500),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -427,6 +538,14 @@ class _MarkTile extends StatelessWidget {
                     Icon(Icons.edit, size: 14, color: scheme.outline),
                   ],
                 ),
+              ),
+            ),
+            IconButton(
+              tooltip: isDefault ? s['unsetDefault'] : s['setDefault'],
+              onPressed: onToggleDefault,
+              icon: Icon(
+                isDefault ? Icons.star : Icons.star_border,
+                color: isDefault ? scheme.primary : scheme.outline,
               ),
             ),
             IconButton(
@@ -442,6 +561,100 @@ class _MarkTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A signature + stamp chosen together to build a combo mark.
+class _ComboPick {
+  _ComboPick({required this.signature, required this.stamp});
+  final SavedMark signature;
+  final SavedMark stamp;
+}
+
+class _ComboPickerDialog extends StatefulWidget {
+  const _ComboPickerDialog({required this.signatures, required this.stamps});
+
+  final List<SavedMark> signatures;
+  final List<SavedMark> stamps;
+
+  @override
+  State<_ComboPickerDialog> createState() => _ComboPickerDialogState();
+}
+
+class _ComboPickerDialogState extends State<_ComboPickerDialog> {
+  SavedMark? _signature;
+  SavedMark? _stamp;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.signatures.length == 1) _signature = widget.signatures.single;
+    if (widget.stamps.length == 1) _stamp = widget.stamps.single;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return AlertDialog(
+      title: Text(s['addCombo']),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              s['savedSignatures'],
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final mark in widget.signatures)
+                  ChoiceChip(
+                    label: Text(mark.name),
+                    selected: _signature?.id == mark.id,
+                    onSelected: (_) => setState(() => _signature = mark),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              s['savedStamps'],
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final mark in widget.stamps)
+                  ChoiceChip(
+                    label: Text(mark.name),
+                    selected: _stamp?.id == mark.id,
+                    onSelected: (_) => setState(() => _stamp = mark),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(s['cancel']),
+        ),
+        FilledButton(
+          onPressed: _signature == null || _stamp == null
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(_ComboPick(signature: _signature!, stamp: _stamp!)),
+          child: Text(s['done']),
+        ),
+      ],
     );
   }
 }

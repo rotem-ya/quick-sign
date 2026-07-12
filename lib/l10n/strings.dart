@@ -86,6 +86,12 @@ class S {
       'settings': 'הגדרות',
       'profile': 'פרופיל',
       'profileName': 'שם (להערות מהירות)',
+      'account': 'חשבון',
+      'signInWithGoogle': 'התחברות עם Google',
+      'signInComingSoonSub': 'בקרוב — לגיבוי אוטומטי דרך חשבון',
+      'signInComingSoonTitle': 'עדיין לא זמין',
+      'signInComingSoonBody':
+          'התחברות אמיתית עם Google דורשת מפתח הגדרה (OAuth Client ID) שרק בעל האפליקציה יכול ליצור ב-Google Cloud Console — תהליך חד-פעמי של כמה דקות, בחינם.\n\nבינתיים, "גיבוי מהיר לתיקיית ברירת מחדל" למטה עושה כמעט אותו דבר — שומר את כל החתימות וההגדרות ישירות ל-Drive/OneDrive שלכם, בלי שום חשבון.',
       'savedItems': 'חתימה וחותמת',
       'replace': 'החלפה',
       'delete': 'מחיקה',
@@ -100,6 +106,8 @@ class S {
       'backupSaved': 'הגיבוי נשמר',
       'backupRestored': 'שוחזר בהצלחה',
       'backupError': 'הקובץ אינו גיבוי של QuickSign',
+      'backupItemCount': '{n} פריטים',
+      'backupItemsAdded': '{n} פריטים נוספו',
       'about': 'אודות',
       'aboutText':
           'QuickSign 1.0 — הכול נשאר במכשיר: אין שרת, אין חשבון, המסמכים לא נשלחים לשום מקום.',
@@ -227,6 +235,12 @@ class S {
       'settings': 'Settings',
       'profile': 'Profile',
       'profileName': 'Name (for quick notes)',
+      'account': 'Account',
+      'signInWithGoogle': 'Sign in with Google',
+      'signInComingSoonSub': 'Coming soon — automatic account backup',
+      'signInComingSoonTitle': 'Not available yet',
+      'signInComingSoonBody':
+          'Real Google sign-in needs a setup key (OAuth Client ID) that only the app\'s owner can create in Google Cloud Console — a one-time, few-minute, free process.\n\nMeanwhile, "Quick backup to default folder" below does almost the same thing — saves every signature and setting straight to your Drive/OneDrive, no account needed.',
       'savedItems': 'Signature & stamp',
       'replace': 'Replace',
       'delete': 'Delete',
@@ -242,6 +256,8 @@ class S {
       'backupSaved': 'Backup saved',
       'backupRestored': 'Restored successfully',
       'backupError': 'Not a QuickSign backup file',
+      'backupItemCount': '{n} items',
+      'backupItemsAdded': '{n} items added',
       'about': 'About',
       'aboutText':
           'QuickSign 1.0 — everything stays on your device: no server, no account, documents are never uploaded.',

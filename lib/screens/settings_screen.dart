@@ -79,12 +79,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _folderName = null);
   }
 
+  /// Honest status instead of a sign-in button that can't actually work yet
+  /// — real Google Sign-In needs an OAuth Client ID only the app's owner can
+  /// create, so this explains exactly what's missing rather than pretending
+  /// to authenticate.
+  Future<void> _showSignInInfo() async {
+    final s = S.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.account_circle_outlined, size: 32),
+        title: Text(s['signInComingSoonTitle']),
+        content: Text(
+          s['signInComingSoonBody'],
+          style: const TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(s['done']),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Counts what's actually in the exported bundle right now — shown in the
+  /// confirmation so a backup visibly proves it isn't empty, instead of a
+  /// bare "saved" that looks identical whether it worked or not.
+  String _markCountText(S s) {
+    final total = _signatures.length + _stamps.length + _combos.length;
+    return s['backupItemCount'].replaceAll('{n}', '$total');
+  }
+
   Future<void> _exportBackup() async {
     final s = S.of(context);
     await _settings.setName(_nameController.text);
     final bundle = await _settings.exportBundle();
     final saved = await _shareService.saveAs(bundle, 'quicksign-backup.json');
-    if (saved && mounted) _snack(s['backupSaved']);
+    if (saved && mounted) {
+      _snack('${s['backupSaved']} — ${_markCountText(s)}');
+    }
   }
 
   /// One tap, no dialog — writes straight into the already-chosen default
@@ -98,7 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await _folderService.saveFile(bundle, 'quicksign-backup.json');
     if (!mounted) return;
     _snack(
-      ok ? '${s['savedToDefaultFolder']} — $_folderName' : s['backupError'],
+      ok
+          ? '${s['savedToDefaultFolder']} — $_folderName · ${_markCountText(s)}'
+          : s['backupError'],
     );
   }
 
@@ -111,10 +148,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
+    final before = _signatures.length + _stamps.length + _combos.length;
     try {
       await _settings.importBundle(bytes);
       await _load();
-      if (mounted) _snack(s['backupRestored']);
+      if (!mounted) return;
+      final after = _signatures.length + _stamps.length + _combos.length;
+      final added = after - before;
+      _snack(
+        '${s['backupRestored']} — ${s['backupItemsAdded'].replaceAll('{n}', '$added')}',
+      );
     } on FormatException {
       if (mounted) _snack(s['backupError']);
     }
@@ -306,6 +349,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     border: const OutlineInputBorder(),
                   ),
                   onSubmitted: _settings.setName,
+                ),
+                const SizedBox(height: 24),
+                _SectionTitle(s['account']),
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.account_circle_outlined,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    title: Text(s['signInWithGoogle']),
+                    subtitle: Text(
+                      s['signInComingSoonSub'],
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    trailing: const Icon(Icons.info_outline, size: 20),
+                    onTap: _showSignInInfo,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 _SectionTitle(s['savedSignatures']),

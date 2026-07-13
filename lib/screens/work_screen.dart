@@ -85,8 +85,8 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   /// Note text follows the document's measured text-line height.
   static const double _noteLineHeights = 1.1;
 
-  /// Deep zoom — 3x the previous ceiling (was 6x page width).
-  static const double _maxZoomScale = 18.0;
+  /// Deep zoom — up to 3000%.
+  static const double _maxZoomScale = 30.0;
 
   /// Zoom out below fit-width, e.g. to see a multi-page document's overall
   /// shape or several pages at once.

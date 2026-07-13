@@ -982,9 +982,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       child: SafeArea(
         bottom: false,
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            boxShadow: DesignTokens.shadowSm,
-          ),
+          decoration: BoxDecoration(boxShadow: DesignTokens.shadowSm),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Column(
@@ -1204,113 +1202,136 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   Widget _buildEmptyState(S s) {
     if (_busy) return const Center(child: CircularProgressIndicator());
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 420),
-              curve: Curves.easeOutBack,
-              builder: (context, value, child) => Transform.scale(
-                scale: value.clamp(0.0, 1.0),
-                child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
-              ),
-              child: Container(
-                width: 116,
-                height: 116,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      DesignTokens.primarySoftStrong,
-                      DesignTokens.primarySoft,
-                    ],
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: DesignTokens.primary.withValues(alpha: 0.16),
-                      blurRadius: 40,
-                      offset: const Offset(0, 16),
-                      spreadRadius: -12,
+    // Scrollable + height-constrained rather than a bare Center: on a real
+    // device (real ad banner, real browser/system chrome eating vertical
+    // space — none of which a desktop-sized test viewport reproduces) this
+    // content can be taller than the available height. A bare Center lets
+    // it silently overflow past the visible area, hiding the "open
+    // document" button — the one thing this screen must never hide. Here
+    // it either fits centered, or scrolls; it can't be clipped unreachable.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeOutBack,
+                    builder: (context, value, child) => Transform.scale(
+                      scale: value.clamp(0.0, 1.0),
+                      child: Opacity(
+                        opacity: value.clamp(0.0, 1.0),
+                        child: child,
+                      ),
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      gradient: DesignTokens.primaryGradient,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: DesignTokens.primaryDeep.withValues(
-                            alpha: 0.35,
-                          ),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                          spreadRadius: -4,
+                    child: Container(
+                      width: 92,
+                      height: 92,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            DesignTokens.primarySoftStrong,
+                            DesignTokens.primarySoft,
+                          ],
                         ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: DesignTokens.primary.withValues(alpha: 0.16),
+                            blurRadius: 32,
+                            offset: const Offset(0, 12),
+                            spreadRadius: -10,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            gradient: DesignTokens.primaryGradient,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: DesignTokens.primaryDeep.withValues(
+                                  alpha: 0.35,
+                                ),
+                                blurRadius: 14,
+                                offset: const Offset(0, 5),
+                                spreadRadius: -4,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.draw_outlined,
+                            size: 26,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    s['emptyTitle'],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                      color: DesignTokens.ink,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    s['emptySubtitle'],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: DesignTokens.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  _GradientCta(
+                    icon: Icons.file_open_outlined,
+                    label: s['openDocument'],
+                    onPressed: _pickAndOpen,
+                  ),
+                  if (ShareService.canShare || kIsWeb) ...[
+                    const SizedBox(height: 16),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: [
+                        if (ShareService.canShare)
+                          _HintPill(
+                            icon: Icons.ios_share,
+                            label: s['shareHint'],
+                          ),
+                        if (kIsWeb)
+                          _HintPill(
+                            icon: Icons.file_download_outlined,
+                            label: s['dragDropHint'],
+                          ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.draw_outlined,
-                      size: 32,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 28),
-            Text(
-              s['emptyTitle'],
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.w700,
-                height: 1.2,
-                color: DesignTokens.ink,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              s['emptySubtitle'],
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15.5, color: DesignTokens.textMuted),
-            ),
-            const SizedBox(height: 30),
-            _GradientCta(
-              icon: Icons.file_open_outlined,
-              label: s['openDocument'],
-              onPressed: _pickAndOpen,
-            ),
-            if (ShareService.canShare || kIsWeb) ...[
-              const SizedBox(height: 22),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  if (ShareService.canShare)
-                    _HintPill(icon: Icons.ios_share, label: s['shareHint']),
-                  if (kIsWeb)
-                    _HintPill(
-                      icon: Icons.file_download_outlined,
-                      label: s['dragDropHint'],
-                    ),
+                  ],
                 ],
               ),
-            ],
-          ],
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 

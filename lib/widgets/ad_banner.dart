@@ -11,13 +11,19 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 class AdBanner extends StatefulWidget {
   const AdBanner({super.key});
 
+  // Ads temporarily disabled — the banner was eating into the empty state's
+  // vertical space badly enough to push the "open document" button off
+  // screen on real devices. Flip back to true once that's sized properly
+  // (and before shipping, replace with production ad unit IDs below).
+  static const bool _adsEnabled = false;
+
   // TODO: replace with production banner ad unit IDs before release.
   static const String _androidAdUnitId =
       'ca-app-pub-3940256099942544/6300978111';
   static const String _iosAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
 
   static bool get supported =>
-      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+      _adsEnabled && !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   @override
   State<AdBanner> createState() => _AdBannerState();
@@ -44,8 +50,7 @@ class _AdBannerState extends State<AdBanner> {
     _ad = null;
     _loaded = false;
 
-    final size =
-        await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(
+    final size = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(
       width.truncate(),
     );
     if (!mounted || size == null) return;

@@ -34,6 +34,7 @@ import '../services/share_service.dart';
 import '../services/stamp_service.dart';
 import '../theme/design_tokens.dart';
 import '../utils/matrix4_scale.dart';
+import '../widgets/action_sheet.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/bottom_toolbar.dart';
 import '../widgets/drag_drop_stub.dart'
@@ -300,6 +301,13 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   // ── Import ────────────────────────────────────────────────────────────────
 
   Future<void> _pickAndOpen() => _openWith(() => _importService.pickAndOpen());
+
+  /// Loads a History entry's bytes for viewing — same path as opening any
+  /// other document, so it's fully interactive (zoom, and if it wasn't a
+  /// signed/flattened copy, still editable) rather than a static preview.
+  Future<void> _openHistoryEntry(Uint8List bytes, String fileName) {
+    return _openWith(() => _importService.openBytes(bytes, fileName: fileName));
+  }
 
   Future<void> _openSharedPath(String path) async {
     if (!ImportService.isSupported(path)) {
@@ -830,12 +838,12 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     final s = S.of(context);
     final defaultFolder = await _folderService.folderName();
     if (!mounted) return;
-    final rows = <_ActionSheetRow>[
+    await showActionSheet(context, [
       // One-tap save into the folder chosen in Settings — the practical
       // "connect to Drive/OneDrive" the field team asked for, without any
       // account sign-in inside the app.
       if (defaultFolder != null)
-        _ActionSheetRow(
+        ActionSheetItem(
           icon: Icons.bolt,
           iconColor: DesignTokens.warning,
           iconBg: DesignTokens.warningSoft,
@@ -851,14 +859,14 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
           },
         ),
       if (ShareService.canShare)
-        _ActionSheetRow(
+        ActionSheetItem(
           icon: Icons.share_outlined,
           title: s['share'],
           onTap: () => _shareService.shareBytes(signedBytes, fileName),
         ),
       // System save dialog — Drive / OneDrive / shared folders / device
       // storage. On the web this becomes a browser download.
-      _ActionSheetRow(
+      ActionSheetItem(
         icon: ShareService.canShare
             ? Icons.drive_folder_upload_outlined
             : Icons.download_outlined,
@@ -868,43 +876,12 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
           if (saved) _snack(s['copySaved']);
         },
       ),
-      _ActionSheetRow(
+      ActionSheetItem(
         icon: Icons.print_outlined,
         title: s['print'],
         onTap: () => _printService.printPdf(signedBytes, fileName),
       ),
-    ];
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                  color: DesignTokens.hairline4,
-                  borderRadius: BorderRadius.circular(DesignTokens.radiusPill),
-                ),
-              ),
-              for (var i = 0; i < rows.length; i++) ...[
-                rows[i].build(sheetContext),
-                if (i < rows.length - 1)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 14),
-                    child: Divider(height: 1),
-                  ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
+    ]);
   }
 
   void _snack(String message) {
@@ -954,6 +931,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                     if (_dockedToolboxAvailable(context) && _toolboxOpen)
                       ToolboxPanel(
                         onClose: () => setState(() => _toolboxOpen = false),
+                        onViewDocument: (bytes, name) {
+                          setState(() => _toolboxOpen = false);
+                          _openHistoryEntry(bytes, name);
+                        },
                       ),
                   ],
                 ),
@@ -1034,7 +1015,12 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                               ? null
                               : () => Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => const HistoryScreen(),
+                                    builder: (_) => HistoryScreen(
+                                      onView: (bytes, name) {
+                                        Navigator.of(context).pop();
+                                        _openHistoryEntry(bytes, name);
+                                      },
+                                    ),
                                   ),
                                 ),
                         ),
@@ -1631,7 +1617,7 @@ class _PagePlaceholderState extends State<_PagePlaceholder>
 
 /// One rendered PDF page. Placement starts with a long-press: hold to anchor,
 /// drag to mark the area, release to place.
-class _PageItem extends StatelessWidget {
+class _PageItem extends StatefulWidget {
   const _PageItem({
     required this.renderService,
     required this.pageIndex,
@@ -1653,15 +1639,26 @@ class _PageItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_PageItem> createState() => _PageItemState();
+}
+
+class _PageItemState extends State<_PageItem> {
+  void _retry() {
+    widget.renderService.evictPage(widget.pageIndex);
+    setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final size = Size(width, height);
+    final size = Size(widget.width, widget.height);
     return GestureDetector(
-      onTap: onTap,
-      onLongPressStart: (details) => onMarkStart(details.localPosition, size),
+      onTap: widget.onTap,
+      onLongPressStart: (details) =>
+          widget.onMarkStart(details.localPosition, size),
       onLongPressMoveUpdate: (details) =>
-          onMarkUpdate(details.localPosition, size),
-      onLongPressEnd: (_) => onMarkEnd(),
-      onLongPressCancel: onMarkEnd,
+          widget.onMarkUpdate(details.localPosition, size),
+      onLongPressEnd: (_) => widget.onMarkEnd(),
+      onLongPressCancel: widget.onMarkEnd,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: DesignTokens.surfacePaper,
@@ -1684,8 +1681,37 @@ class _PageItem extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: FutureBuilder<Uint8List>(
-            future: renderService.renderPage(pageIndex),
+            future: widget.renderService.renderPage(widget.pageIndex),
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: InkWell(
+                    onTap: _retry,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.refresh,
+                            size: 28,
+                            color: DesignTokens.textFaint,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            S.of(context)['pageRenderFailed'],
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: DesignTokens.textFaint,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
               if (!snapshot.hasData) {
                 return const Center(
                   child: SizedBox(
@@ -1967,91 +1993,6 @@ class _PagePill extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w700,
             color: DesignTokens.primaryDeep,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One row of the send/share action sheet — icon chip + title(+subtitle),
-/// generous touch target, no ListTile chrome. Closes the sheet, then runs
-/// the action, matching a native system share sheet's feel more than the
-/// previous plain ListTile list did.
-class _ActionSheetRow {
-  _ActionSheetRow({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-    this.subtitle,
-    this.iconColor,
-    this.iconBg,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Color? iconColor;
-  final Color? iconBg;
-  final Future<void> Function() onTap;
-
-  Widget build(BuildContext sheetContext) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-        onTap: () {
-          Navigator.of(sheetContext).pop();
-          onTap();
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: iconBg ?? DesignTokens.surfaceMuted,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  icon,
-                  size: 21,
-                  color: iconColor ?? DesignTokens.iconStroke,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16.5,
-                        fontWeight: FontWeight.w600,
-                        color: DesignTokens.ink,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: DesignTokens.textMuted,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
           ),
         ),
       ),

@@ -37,6 +37,7 @@ class S {
       'processing': 'רגע…',
       'importError': 'הקובץ לא נתמך (PDF או תמונה)',
       'exportError': 'הייצוא נכשל',
+      'pageRenderFailed': 'לא נטען — לנסות שוב',
       'emptySignature': 'קודם מציירים חתימה',
       'newDocument': 'מסמך חדש',
       'stampHint': 'מצלמים חותמת על דף לבן — הרקע יוסר אוטומטית',
@@ -59,6 +60,7 @@ class S {
       'removeFolder': 'הסרה',
       'saveToDefaultFolder': 'שמירה מהירה',
       'savedToDefaultFolder': 'נשמר',
+      'viewDocument': 'פתיחה לצפייה',
       'history': 'היסטוריית מסמכים',
       'historyEmpty': 'עוד אין מסמכים בהיסטוריה',
       'historyEmptyHint': 'כל מסמך שנפתח יישמר כאן — עד שתמחק אותו בעצמך',
@@ -189,6 +191,7 @@ class S {
       'processing': 'One moment…',
       'importError': 'Unsupported file (PDF or image only)',
       'exportError': 'Export failed',
+      'pageRenderFailed': "Couldn't load — tap to retry",
       'emptySignature': 'Draw a signature first',
       'newDocument': 'New document',
       'stampHint':
@@ -212,6 +215,7 @@ class S {
       'removeFolder': 'Remove',
       'saveToDefaultFolder': 'Quick save',
       'savedToDefaultFolder': 'Saved',
+      'viewDocument': 'Open to view',
       'history': 'Document history',
       'historyEmpty': 'No documents yet',
       'historyEmptyHint':

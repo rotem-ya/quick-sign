@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
@@ -49,7 +50,16 @@ Future<web.IDBObjectStore> _store(String mode) async {
 Future<void> putHistoryBytes(String key, Uint8List bytes) async {
   final store = await _store('readwrite');
   final completer = Completer<void>();
-  final request = store.put(bytes.toJS, key.toJS);
+  // Stored as base64 text, not the raw TypedArray — storing a Uint8Array
+  // directly (via .toJS, a zero-copy view over Dart's own memory) reopened
+  // reliably fine on its own, but reopening a document read back this way
+  // reproducibly hung pdf.js's *render* call forever afterwards (confirmed:
+  // identical bytes reopened via the file picker never hang, only ones
+  // that round-tripped through IndexedDB as a TypedArray did — even a
+  // full copy on the read side didn't help, so something about the stored
+  // TypedArray/ArrayBuffer itself seems to be the trigger). A plain string
+  // has none of that ambiguity in structured-clone/JS-interop.
+  final request = store.put(base64Encode(bytes).toJS, key.toJS);
   request.onsuccess = ((web.Event _) {
     completer.complete();
   }).toJS;
@@ -65,7 +75,9 @@ Future<Uint8List?> getHistoryBytes(String key) async {
   final request = store.get(key.toJS);
   request.onsuccess = ((web.Event _) {
     final result = request.result;
-    completer.complete(result == null ? null : (result as JSUint8Array).toDart);
+    completer.complete(
+      result == null ? null : base64Decode((result as JSString).toDart),
+    );
   }).toJS;
   request.onerror = ((web.Event _) {
     completer.completeError(request.error?.message ?? 'get failed');

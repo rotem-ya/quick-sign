@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -8,17 +10,23 @@ import '../services/history_service.dart';
 import '../services/print_service.dart';
 import '../services/share_service.dart';
 import '../theme/design_tokens.dart';
+import '../widgets/action_sheet.dart';
 
 /// Every signed document, kept until the user explicitly deletes it — a
 /// permanent local copy, separate from the transient file used for a single
 /// share/print action.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, this.embedded = false});
+  const HistoryScreen({super.key, this.embedded = false, this.onView});
 
   /// True when hosted inside the web toolbox side panel instead of pushed
   /// as its own full-screen route — skips the AppBar (the panel supplies
   /// its own chrome) since there's nothing to "back" out of.
   final bool embedded;
+
+  /// Loads this entry's bytes into the work screen for viewing — the
+  /// caller (WorkScreen) owns closing this screen/panel and opening the
+  /// document, since both differ between the pushed and embedded cases.
+  final void Function(Uint8List bytes, String fileName)? onView;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -77,82 +85,54 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
     final defaultFolder = await _folderService.folderName();
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (defaultFolder != null)
-              ListTile(
-                leading: Icon(Icons.bolt, size: 28, color: Colors.amber[800]),
-                title: Text(
-                  s['saveToDefaultFolder'],
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                subtitle: Text(
-                  defaultFolder,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                minTileHeight: 56,
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  final ok = await _folderService.saveFile(
-                    bytes,
-                    entry.fileName,
-                  );
-                  _snack(
-                    ok
-                        ? '${s['savedToDefaultFolder']} — $defaultFolder'
-                        : s['exportError'],
-                  );
-                },
-              ),
-            if (ShareService.canShare)
-              ListTile(
-                leading: const Icon(Icons.share, size: 28),
-                title: Text(s['share'], style: const TextStyle(fontSize: 18)),
-                minTileHeight: 56,
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  await _shareService.shareBytes(bytes, entry.fileName);
-                },
-              ),
-            ListTile(
-              leading: Icon(
-                ShareService.canShare
-                    ? Icons.drive_folder_upload_outlined
-                    : Icons.download,
-                size: 28,
-              ),
-              title: Text(
-                ShareService.canShare ? s['saveTo'] : s['download'],
-                style: const TextStyle(fontSize: 18),
-              ),
-              minTileHeight: 56,
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                final saved = await _shareService.saveAs(bytes, entry.fileName);
-                if (saved) _snack(s['copySaved']);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.print_outlined, size: 28),
-              title: Text(s['print'], style: const TextStyle(fontSize: 18)),
-              minTileHeight: 56,
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await _printService.printPdf(bytes, entry.fileName);
-              },
-            ),
-          ],
+    final onView = widget.onView;
+    await showActionSheet(context, [
+      if (onView != null)
+        ActionSheetItem(
+          icon: Icons.visibility_outlined,
+          iconColor: DesignTokens.primaryDeep,
+          iconBg: DesignTokens.primarySoft,
+          title: s['viewDocument'],
+          onTap: () async => onView(bytes, entry.fileName),
         ),
+      if (defaultFolder != null)
+        ActionSheetItem(
+          icon: Icons.bolt,
+          iconColor: DesignTokens.warning,
+          iconBg: DesignTokens.warningSoft,
+          title: s['saveToDefaultFolder'],
+          subtitle: defaultFolder,
+          onTap: () async {
+            final ok = await _folderService.saveFile(bytes, entry.fileName);
+            _snack(
+              ok
+                  ? '${s['savedToDefaultFolder']} — $defaultFolder'
+                  : s['exportError'],
+            );
+          },
+        ),
+      if (ShareService.canShare)
+        ActionSheetItem(
+          icon: Icons.share_outlined,
+          title: s['share'],
+          onTap: () => _shareService.shareBytes(bytes, entry.fileName),
+        ),
+      ActionSheetItem(
+        icon: ShareService.canShare
+            ? Icons.drive_folder_upload_outlined
+            : Icons.download_outlined,
+        title: ShareService.canShare ? s['saveTo'] : s['download'],
+        onTap: () async {
+          final saved = await _shareService.saveAs(bytes, entry.fileName);
+          if (saved) _snack(s['copySaved']);
+        },
       ),
-    );
+      ActionSheetItem(
+        icon: Icons.print_outlined,
+        title: s['print'],
+        onTap: () => _printService.printPdf(bytes, entry.fileName),
+      ),
+    ]);
   }
 
   void _snack(String message) {

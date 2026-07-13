@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -52,10 +53,26 @@ class PdfRenderService {
     return PdfDocumentInfo(pageCount: doc.pagesCount, pageSizes: sizes);
   }
 
+  /// How long a single page render may take before we give up and surface
+  /// an error instead of leaving the UI on a spinner forever. Rendering
+  /// itself is normally well under a second; this is only a backstop for
+  /// the underlying platform renderer getting stuck (observed on web: the
+  /// pdf.js worker can end up wedged after certain document-switching
+  /// sequences and never resolves its render call at all — no exception,
+  /// just silence — so a plain try/catch around the render doesn't help).
+  static const Duration renderTimeout = Duration(seconds: 12);
+
   /// PNG bytes of the zero-indexed [pageIndex].
   Future<Uint8List> renderPage(int pageIndex) {
-    return _cache.putIfAbsent(pageIndex, () => _renderPage(pageIndex));
+    return _cache.putIfAbsent(
+      pageIndex,
+      () => _renderPage(pageIndex).timeout(renderTimeout),
+    );
   }
+
+  /// Drops a page's cached render (including a failed/timed-out one) so
+  /// the next [renderPage] call retries from scratch.
+  void evictPage(int pageIndex) => _cache.remove(pageIndex);
 
   Future<Uint8List> _renderPage(int pageIndex) async {
     final doc = _document;

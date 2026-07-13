@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
@@ -15,9 +17,14 @@ enum ToolboxTab { settings, history }
 /// any sub-flow they push (redraw a signature, the stamp designer, …) still
 /// opens as a normal full-screen route on the app's root navigator.
 class ToolboxPanel extends StatefulWidget {
-  const ToolboxPanel({super.key, required this.onClose});
+  const ToolboxPanel({super.key, required this.onClose, this.onViewDocument});
 
   final VoidCallback onClose;
+
+  /// Forwarded to the embedded [HistoryScreen] — loads a history entry into
+  /// the document behind this panel (WorkScreen owns closing the panel and
+  /// opening the bytes).
+  final void Function(Uint8List bytes, String fileName)? onViewDocument;
 
   @override
   State<ToolboxPanel> createState() => _ToolboxPanelState();
@@ -84,7 +91,7 @@ class _ToolboxPanelState extends State<ToolboxPanel> {
                   children: [
                     const SettingsScreen(embedded: true),
                     if (HistoryService.isSupported)
-                      const HistoryScreen(embedded: true)
+                      HistoryScreen(embedded: true, onView: widget.onViewDocument)
                     else
                       const SizedBox.shrink(),
                   ],

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart' show Matrix4;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -22,6 +23,7 @@ import 'package:quick_sign/services/import_service.dart';
 import 'package:quick_sign/services/marks_service.dart';
 import 'package:quick_sign/services/settings_service.dart';
 import 'package:quick_sign/services/stamp_service.dart';
+import 'package:quick_sign/utils/matrix4_scale.dart';
 
 class _FakePathProviderPlatform extends PathProviderPlatform {
   _FakePathProviderPlatform(this.documentsPath);
@@ -40,6 +42,30 @@ Uint8List _pngOf(int width, int height, img.ColorRgba8 color) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Matrix4Scale.scale2D', () {
+    test('reads back a uniform 2D scale below 1', () {
+      // Regression: Matrix4.getMaxScaleOnAxis() takes the max over X, Y,
+      // AND Z — since these 2D pan/zoom matrices never scale Z, that fixed
+      // 1.0 silently wins the max for any real 2D scale below 1, making
+      // zoom-out permanently misread as scale=1. scale2D must not have
+      // this bug.
+      final m = Matrix4.identity()..scaleByDouble(0.3, 0.3, 1, 1);
+      expect(m.scale2D, closeTo(0.3, 1e-9));
+    });
+
+    test('reads back a uniform 2D scale above 1', () {
+      final m = Matrix4.identity()..scaleByDouble(4.0, 4.0, 1, 1);
+      expect(m.scale2D, closeTo(4.0, 1e-9));
+    });
+
+    test('is unaffected by translation', () {
+      final m = Matrix4.identity()
+        ..translateByDouble(120, -45, 0, 1)
+        ..scaleByDouble(0.5, 0.5, 1, 1);
+      expect(m.scale2D, closeTo(0.5, 1e-9));
+    });
+  });
 
   group('ImportService.wrapImageAsPdf', () {
     test('wraps an image as a single-page PDF matching the image aspect', () {

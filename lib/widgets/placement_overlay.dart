@@ -6,6 +6,7 @@ import '../l10n/strings.dart';
 import '../models/placement.dart';
 import '../services/export_service.dart';
 import '../theme/design_tokens.dart';
+import '../utils/matrix4_scale.dart';
 
 /// A placed signature / stamp / note rendered above the document.
 ///
@@ -55,7 +56,7 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
 
   Placement get p => widget.placement;
 
-  double get _zoom => widget.transformation.value.getMaxScaleOnAxis();
+  double get _zoom => widget.transformation.value.scale2D;
 
   void _onScaleStart(ScaleStartDetails details) {
     _startWidthFraction = p.widthFraction;

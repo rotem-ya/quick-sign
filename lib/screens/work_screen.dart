@@ -33,6 +33,7 @@ import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
 import '../theme/design_tokens.dart';
+import '../utils/matrix4_scale.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/bottom_toolbar.dart';
 import '../widgets/drag_drop_stub.dart'
@@ -85,6 +86,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   /// Deep zoom — 3x the previous ceiling (was 6x page width).
   static const double _maxZoomScale = 18.0;
+
+  /// Zoom out below fit-width, e.g. to see a multi-page document's overall
+  /// shape or several pages at once.
+  static const double _minZoomScale = 0.3;
 
   /// Immersive chrome show/hide animation.
   static const Duration _chromeAnimationDuration = Duration(milliseconds: 220);
@@ -246,21 +251,34 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     super.dispose();
   }
 
+  /// Keeps the document inside the viewport — pinned to fully cover it on
+  /// an axis where it's bigger than the viewport (the usual case), centered
+  /// on an axis where zooming out has made it smaller than the viewport.
+  Offset _clampPan(double tx, double ty, double scale) {
+    final contentWidth = _viewportSize.width * scale;
+    // Matches the child SizedBox, which pads short documents up to the
+    // viewport height so they still fill the screen at scale 1.
+    final contentHeight = math.max(_docHeight, _viewportSize.height) * scale;
+    final clampedTx = contentWidth <= _viewportSize.width
+        ? (_viewportSize.width - contentWidth) / 2
+        : tx.clamp(_viewportSize.width - contentWidth, 0.0);
+    final clampedTy = contentHeight <= _viewportSize.height
+        ? (_viewportSize.height - contentHeight) / 2
+        : ty.clamp(_viewportSize.height - contentHeight, 0.0);
+    return Offset(clampedTx, clampedTy);
+  }
+
   /// Plain mouse wheel pans the document like a normal page/PDF reader —
   /// InteractiveViewer itself hard-codes wheel as zoom with no way to opt
   /// out (see wheel_scroll_web.dart), so this mirrors _zoomBy's clamp math
   /// for a pure translation instead of a scale change.
   void _panByWheel(double dx, double dy) {
     final matrix = _transformation.value;
-    final scale = matrix.getMaxScaleOnAxis();
+    final scale = matrix.scale2D;
     final t = matrix.getTranslation();
-    var tx = t.x - dx;
-    var ty = t.y - dy;
-    tx = tx.clamp(_viewportSize.width * (1 - scale), 0.0);
-    final minY = math.min(0.0, _viewportSize.height - _docHeight * scale);
-    ty = ty.clamp(minY, 0.0);
+    final clamped = _clampPan(t.x - dx, t.y - dy, scale);
     _transformation.value = Matrix4.identity()
-      ..translateByDouble(tx, ty, 0, 1)
+      ..translateByDouble(clamped.dx, clamped.dy, 0, 1)
       ..scaleByDouble(scale, scale, 1, 1);
   }
 
@@ -673,20 +691,17 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   void _zoomBy(double factor) {
     final matrix = _transformation.value;
-    final scale = matrix.getMaxScaleOnAxis();
-    final target = (scale * factor).clamp(1.0, _maxZoomScale);
+    final scale = matrix.scale2D;
+    final target = (scale * factor).clamp(_minZoomScale, _maxZoomScale);
     if (target == scale) return;
     final f = target / scale;
     final center = Offset(_viewportSize.width / 2, _viewportSize.height / 2);
     final t = matrix.getTranslation();
-    var tx = center.dx - (center.dx - t.x) * f;
-    var ty = center.dy - (center.dy - t.y) * f;
-    // Keep the document inside the viewport.
-    tx = tx.clamp(_viewportSize.width * (1 - target), 0.0);
-    final minY = math.min(0.0, _viewportSize.height - _docHeight * target);
-    ty = ty.clamp(minY, 0.0);
+    final tx = center.dx - (center.dx - t.x) * f;
+    final ty = center.dy - (center.dy - t.y) * f;
+    final clamped = _clampPan(tx, ty, target);
     _transformation.value = Matrix4.identity()
-      ..translateByDouble(tx, ty, 0, 1)
+      ..translateByDouble(clamped.dx, clamped.dy, 0, 1)
       ..scaleByDouble(target, target, 1, 1);
   }
 
@@ -1294,7 +1309,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                   child: InteractiveViewer(
                     transformationController: _transformation,
                     constrained: false,
-                    minScale: 1,
+                    minScale: _minZoomScale,
                     maxScale: _maxZoomScale,
                     child: SizedBox(
                       width: viewportWidth,
@@ -1458,7 +1473,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     double viewportHeight,
   ) {
     final matrix = _transformation.value;
-    final scale = matrix.getMaxScaleOnAxis();
+    final scale = matrix.scale2D;
     final translationY = matrix.getTranslation().y;
     final centerDocY = (viewportHeight / 2 - translationY) / scale;
     for (var i = 0; i < tops.length; i++) {
@@ -1477,7 +1492,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     double viewportHeight,
   ) {
     final matrix = _transformation.value;
-    final scale = matrix.getMaxScaleOnAxis();
+    final scale = matrix.scale2D;
     final translationY = matrix.getTranslation().y;
     final visibleTop = (0 - translationY) / scale;
     final visibleBottom = (viewportHeight - translationY) / scale;

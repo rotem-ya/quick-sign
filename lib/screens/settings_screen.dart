@@ -16,7 +16,12 @@ import 'stamp_setup_screen.dart';
 /// Profile, the signatures/stamps library (any number of each — name, add,
 /// edit, delete), default save folder, portable backup, about.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.embedded = false});
+
+  /// True when hosted inside the web toolbox side panel instead of pushed
+  /// as its own full-screen route — skips the AppBar (the panel supplies
+  /// its own chrome) since there's nothing to "back" out of.
+  final bool embedded;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -333,7 +338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final s = S.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(s['settings'])),
+      appBar: widget.embedded ? null : AppBar(title: Text(s['settings'])),
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
           : ListView(

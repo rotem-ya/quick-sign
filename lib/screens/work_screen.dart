@@ -42,6 +42,7 @@ import '../widgets/drag_drop_stub.dart'
 import '../widgets/note_sheet.dart';
 import '../widgets/placement_overlay.dart';
 import '../widgets/signature_sheet.dart';
+import '../widgets/toolbox_panel.dart';
 import '../widgets/wheel_scroll_stub.dart'
     if (dart.library.js_interop) '../widgets/wheel_scroll_web.dart'
     as wheel_scroll;
@@ -148,6 +149,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   // frame, since it's updated from inside the document canvas's own build)
   // by the same scroll-position math that used to draw a floating badge.
   final ValueNotifier<int> _currentPageNotifier = ValueNotifier<int>(0);
+
+  // Web only: docked toolbox panel (settings + history) alongside the
+  // document, instead of navigating away to a full-screen route.
+  bool _toolboxOpen = false;
 
   @override
   void initState() {
@@ -921,7 +926,20 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                 ),
               ),
               Expanded(
-                child: session == null ? _buildEmptyState(s) : _buildDocument(),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: session == null
+                          ? _buildEmptyState(s)
+                          : _buildDocument(),
+                    ),
+                    if (kIsWeb && _toolboxOpen)
+                      ToolboxPanel(
+                        onClose: () => setState(() => _toolboxOpen = false),
+                      ),
+                  ],
+                ),
               ),
               ClipRect(
                 child: AnimatedSize(
@@ -985,29 +1003,38 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                         tooltip: s['newDocument'],
                         onTap: _busy ? null : _pickAndOpen,
                       ),
-                    if (HistoryService.isSupported)
+                    if (kIsWeb)
                       _HeaderIconButton(
-                        icon: Icons.history,
-                        tooltip: s['history'],
+                        icon: Icons.dashboard_customize_outlined,
+                        tooltip: s['toolbox'],
+                        onTap: () =>
+                            setState(() => _toolboxOpen = !_toolboxOpen),
+                      )
+                    else ...[
+                      if (HistoryService.isSupported)
+                        _HeaderIconButton(
+                          icon: Icons.history,
+                          tooltip: s['history'],
+                          onTap: _busy
+                              ? null
+                              : () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const HistoryScreen(),
+                                  ),
+                                ),
+                        ),
+                      _HeaderIconButton(
+                        icon: Icons.settings_outlined,
+                        tooltip: s['settings'],
                         onTap: _busy
                             ? null
                             : () => Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const HistoryScreen(),
+                                  builder: (_) => const SettingsScreen(),
                                 ),
                               ),
                       ),
-                    _HeaderIconButton(
-                      icon: Icons.settings_outlined,
-                      tooltip: s['settings'],
-                      onTap: _busy
-                          ? null
-                          : () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const SettingsScreen(),
-                              ),
-                            ),
-                    ),
+                    ],
                   ],
                 ),
                 if (session != null) ...[

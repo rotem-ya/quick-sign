@@ -12,7 +12,12 @@ import '../services/share_service.dart';
 /// permanent local copy, separate from the transient file used for a single
 /// share/print action.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  const HistoryScreen({super.key, this.embedded = false});
+
+  /// True when hosted inside the web toolbox side panel instead of pushed
+  /// as its own full-screen route — skips the AppBar (the panel supplies
+  /// its own chrome) since there's nothing to "back" out of.
+  final bool embedded;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -46,17 +51,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!mounted || bytes == null) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
-          label: s['undo'],
-          onPressed: () async {
-            await _history.restore(entry, bytes);
-            await _load();
-          },
+      ..showSnackBar(
+        SnackBar(
+          content: Text(s['deleted'], style: const TextStyle(fontSize: 16)),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: s['undo'],
+            onPressed: () async {
+              await _history.restore(entry, bytes);
+              await _load();
+            },
+          ),
         ),
-      ));
+      );
   }
 
   Future<void> _openActions(HistoryEntry entry) async {
@@ -79,19 +86,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
             if (defaultFolder != null)
               ListTile(
                 leading: Icon(Icons.bolt, size: 28, color: Colors.amber[800]),
-                title: Text(s['saveToDefaultFolder'],
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w600)),
-                subtitle:
-                    Text(defaultFolder, style: const TextStyle(fontSize: 13)),
+                title: Text(
+                  s['saveToDefaultFolder'],
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  defaultFolder,
+                  style: const TextStyle(fontSize: 13),
+                ),
                 minTileHeight: 56,
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
-                  final ok =
-                      await _folderService.saveFile(bytes, entry.fileName);
-                  _snack(ok
-                      ? '${s['savedToDefaultFolder']} — $defaultFolder'
-                      : s['exportError']);
+                  final ok = await _folderService.saveFile(
+                    bytes,
+                    entry.fileName,
+                  );
+                  _snack(
+                    ok
+                        ? '${s['savedToDefaultFolder']} — $defaultFolder'
+                        : s['exportError'],
+                  );
                 },
               ),
             if (ShareService.canShare)
@@ -141,8 +158,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-          content: Text(message, style: const TextStyle(fontSize: 16))));
+      ..showSnackBar(
+        SnackBar(content: Text(message, style: const TextStyle(fontSize: 16))),
+      );
   }
 
   @override
@@ -150,25 +168,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final s = S.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(s['history'])),
+      appBar: widget.embedded ? null : AppBar(title: Text(s['history'])),
       body: _entries == null
           ? const Center(child: CircularProgressIndicator())
           : _entries!.isEmpty
-              ? _buildEmpty(s, scheme)
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _entries!.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final entry = _entries![index];
-                    return _HistoryTile(
-                      key: ValueKey(entry.id),
-                      entry: entry,
-                      onTap: () => _openActions(entry),
-                      onDelete: () => _delete(entry),
-                    );
-                  },
-                ),
+          ? _buildEmpty(s, scheme)
+          : ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: _entries!.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final entry = _entries![index];
+                return _HistoryTile(
+                  key: ValueKey(entry.id),
+                  entry: entry,
+                  onTap: () => _openActions(entry),
+                  onDelete: () => _delete(entry),
+                );
+              },
+            ),
     );
   }
 
@@ -228,8 +246,10 @@ class _HistoryTile extends StatelessWidget {
         onTap: onTap,
         leading: CircleAvatar(
           backgroundColor: scheme.primaryContainer,
-          child: Icon(Icons.picture_as_pdf_outlined,
-              color: scheme.onPrimaryContainer),
+          child: Icon(
+            Icons.picture_as_pdf_outlined,
+            color: scheme.onPrimaryContainer,
+          ),
         ),
         title: Text(
           entry.fileName,

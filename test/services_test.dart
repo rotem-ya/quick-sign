@@ -135,6 +135,43 @@ void main() {
       }
       expect(darkPixels, greaterThan(20), reason: 'note glyphs were painted');
     });
+
+    test(
+      'a short note hugs its own text instead of a wide, mostly-empty box',
+      () async {
+        // widthFraction 0.5 on a 400pt-wide page configures a 200pt-wide box
+        // (x=100..300) — short text should paint in a much narrower span
+        // than that, centered on nx, not stretched across the whole box.
+        final basePng = _pngOf(400, 600, img.ColorRgba8(255, 255, 255, 255));
+        final out = await ExportService.rasterizePage(
+          basePng: basePng,
+          placements: [
+            Placement(
+              type: PlacementType.note,
+              pageIndex: 0,
+              nx: 0.5,
+              ny: 0.5,
+              widthFraction: 0.5,
+              text: 'אושר',
+            ),
+          ],
+        );
+
+        final decoded = img.decodePng(out)!;
+        var minX = decoded.width, maxX = 0;
+        for (var y = 0; y < decoded.height; y++) {
+          for (var x = 0; x < decoded.width; x++) {
+            final p = decoded.getPixel(x, y);
+            if (p.r < 100 && p.g < 100 && p.b < 100) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+            }
+          }
+        }
+        final inkSpan = maxX - minX;
+        expect(inkSpan, lessThan(100), reason: 'ink should hug the short text');
+      },
+    );
   });
 
   group('ExportService.assembleRasterPdf', () {
@@ -542,7 +579,37 @@ void main() {
       expect(restored.pageCount, entry.pageCount);
       expect(restored.sizeBytes, entry.sizeBytes);
       expect(restored.filePath, entry.filePath);
+      expect(restored.signed, isTrue);
     });
+
+    test('round-trips signed: false (an opened-but-not-signed entry)', () {
+      final entry = HistoryEntry(
+        id: '124',
+        fileName: 'contract.pdf',
+        savedAt: DateTime.utc(2026, 1, 15, 10, 30),
+        pageCount: 3,
+        sizeBytes: 40000,
+        filePath: '/tmp/history/124-contract.pdf',
+        signed: false,
+      );
+      final restored = HistoryEntry.fromJson(entry.toJson())!;
+      expect(restored.signed, isFalse);
+    });
+
+    test(
+      'defaults signed to true for pre-existing entries missing the field',
+      () {
+        final restored = HistoryEntry.fromJson({
+          'id': '125',
+          'fileName': 'old.pdf',
+          'savedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          'pageCount': 1,
+          'sizeBytes': 1000,
+          'filePath': '/tmp/history/125-old.pdf',
+        })!;
+        expect(restored.signed, isTrue);
+      },
+    );
 
     test('returns null instead of throwing on malformed data', () {
       expect(HistoryEntry.fromJson({'id': 'only-id'}), isNull);

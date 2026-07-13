@@ -97,12 +97,19 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
   @override
   Widget build(BuildContext context) {
     final rect = widget.pageRect;
-    final width = p.widthFraction * rect.width;
+    final configuredWidth = p.widthFraction * rect.width;
     final isNote = p.type == PlacementType.note;
     final noteStyle = isNote ? _noteStyle(rect.width) : null;
-    final height = isNote
-        ? _measureNoteHeight(p.text ?? '', width, noteStyle!)
-        : width / p.aspectRatio;
+    double width;
+    double height;
+    if (isNote) {
+      final size = _measureNoteSize(p.text ?? '', configuredWidth, noteStyle!);
+      width = size.width;
+      height = size.height;
+    } else {
+      width = configuredWidth;
+      height = configuredWidth / p.aspectRatio;
+    }
     final cx = rect.left + p.nx * rect.width;
     final cy = rect.top + p.ny * rect.height;
     final scheme = Theme.of(context).colorScheme;
@@ -255,16 +262,20 @@ class _PlacementOverlayState extends State<PlacementOverlay> {
     );
   }
 
-  double _measureNoteHeight(String text, double width, TextStyle style) {
+  /// The box hugs the text's actual (single-line, unless it needs to wrap)
+  /// width instead of always spanning [maxWidth] — a short note used to
+  /// leave a wide, mostly-empty selection frame with the text stuck at one
+  /// edge. [maxWidth] still caps it, so long text wraps exactly as before.
+  Size _measureNoteSize(String text, double maxWidth, TextStyle style) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: ExportService.isRtlText(text)
           ? TextDirection.rtl
           : TextDirection.ltr,
-    )..layout(minWidth: width, maxWidth: width);
-    final height = painter.height;
+    )..layout(maxWidth: maxWidth);
+    final size = Size(painter.width, painter.height);
     painter.dispose();
-    return height;
+    return size;
   }
 }
 

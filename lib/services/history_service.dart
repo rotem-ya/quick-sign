@@ -61,11 +61,13 @@ class HistoryService {
     return entries;
   }
 
-  /// Saves [bytes] as a new permanent history entry.
+  /// Saves [bytes] as a new permanent history entry. [signed] is false for
+  /// a document that was merely opened, not (yet, or ever) signed and sent.
   Future<HistoryEntry> record({
     required Uint8List bytes,
     required String fileName,
     required int pageCount,
+    bool signed = true,
   }) async {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final storageRef = await _write(id, fileName, bytes);
@@ -77,6 +79,7 @@ class HistoryService {
       pageCount: pageCount,
       sizeBytes: bytes.length,
       filePath: storageRef,
+      signed: signed,
     );
     final current = await list();
     await _saveIndex([entry, ...current]);

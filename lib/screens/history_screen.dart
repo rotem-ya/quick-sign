@@ -7,6 +7,7 @@ import '../services/default_folder_service.dart';
 import '../services/history_service.dart';
 import '../services/print_service.dart';
 import '../services/share_service.dart';
+import '../theme/design_tokens.dart';
 
 /// Every signed document, kept until the user explicitly deletes it — a
 /// permanent local copy, separate from the transient file used for a single
@@ -251,11 +252,22 @@ class _HistoryTile extends StatelessWidget {
             color: scheme.onPrimaryContainer,
           ),
         ),
-        title: Text(
-          entry.fileName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                entry.fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _StatusBadge(signed: entry.signed),
+          ],
         ),
         subtitle: Text(
           '$dateStr · ${entry.pageCount} ${s['pages']} · ${_formatSize(entry.sizeBytes)}',
@@ -265,6 +277,37 @@ class _HistoryTile extends StatelessWidget {
           tooltip: s['delete'],
           icon: Icon(Icons.delete_outline, color: scheme.error),
           onPressed: onDelete,
+        ),
+      ),
+    );
+  }
+}
+
+/// Small "נחתם" / "נפתח בלבד" pill distinguishing a fully signed-and-sent
+/// document from one that was just opened.
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.signed});
+
+  final bool signed;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final color = signed ? DesignTokens.primaryDeep : DesignTokens.textFaint;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: signed ? DesignTokens.primarySoft : DesignTokens.hairline3,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          signed ? s['historySignedBadge'] : s['historyOpenedBadge'],
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
         ),
       ),
     );

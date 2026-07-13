@@ -105,12 +105,16 @@ class ExportService {
   }
 
   /// Paints the note centered on the canvas origin (the canvas is already
-  /// translated to the placement center and rotated).
+  /// translated to the placement center and rotated). Matches the on-screen
+  /// overlay exactly: the box hugs the text's actual width (capped at
+  /// [maxWidth], so long text still wraps) instead of always spanning the
+  /// full configured width — otherwise short notes paint with a lot of
+  /// empty space on one side.
   static void _paintNote(ui.Canvas canvas, Placement placement, double w) {
     final text = placement.text;
     if (text == null || text.isEmpty) return;
     final rtl = isRtlText(text);
-    final boxWidth = placement.widthFraction * w;
+    final maxWidth = placement.widthFraction * w;
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -123,8 +127,8 @@ class ExportService {
       ),
       textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
       textAlign: rtl ? TextAlign.right : TextAlign.left,
-    )..layout(minWidth: boxWidth, maxWidth: boxWidth);
-    painter.paint(canvas, ui.Offset(-boxWidth / 2, -painter.height / 2));
+    )..layout(maxWidth: maxWidth);
+    painter.paint(canvas, ui.Offset(-painter.width / 2, -painter.height / 2));
     painter.dispose();
   }
 

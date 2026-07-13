@@ -319,6 +319,18 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       });
       _applyImmersiveMode(true);
       _transformation.value = Matrix4.identity();
+      // Every opened document goes into History too, not just ones that
+      // get signed and sent — easy to find again even if you never finish.
+      if (HistoryService.isSupported) {
+        unawaited(
+          _historyService.record(
+            bytes: session.pdfBytes,
+            fileName: session.fileName,
+            pageCount: session.pageCount,
+            signed: false,
+          ),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -790,6 +802,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
             bytes: signedBytes,
             fileName: session.signedFileName,
             pageCount: session.pageCount,
+            signed: true,
           ),
         );
       }

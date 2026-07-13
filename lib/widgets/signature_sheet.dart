@@ -5,6 +5,7 @@ import 'package:signature/signature.dart';
 
 import '../l10n/strings.dart';
 import '../models/saved_mark.dart';
+import '../theme/design_tokens.dart';
 import '../widgets/transparency_checkerboard.dart';
 
 /// What the mark picker sheet produced.
@@ -173,7 +174,6 @@ class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
@@ -184,8 +184,9 @@ class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
             height: 220,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+              boxShadow: DesignTokens.shadowSm,
+              border: Border.all(color: DesignTokens.hairline2),
             ),
             clipBehavior: Clip.antiAlias,
             child: Signature(

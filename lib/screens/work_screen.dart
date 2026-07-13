@@ -982,8 +982,8 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       child: SafeArea(
         bottom: false,
         child: DecoratedBox(
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: DesignTokens.hairline1)),
+          decoration: BoxDecoration(
+            boxShadow: DesignTokens.shadowSm,
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1095,21 +1095,21 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   Widget _buildLogo() {
     return Container(
-      width: 32,
-      height: 32,
+      width: 34,
+      height: 34,
       decoration: BoxDecoration(
         gradient: DesignTokens.primaryGradient,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(11),
         boxShadow: [
           BoxShadow(
-            color: DesignTokens.primaryDeep.withValues(alpha: 0.6),
-            blurRadius: 10,
+            color: DesignTokens.primaryDeep.withValues(alpha: 0.45),
+            blurRadius: 12,
             offset: const Offset(0, 4),
-            spreadRadius: -3,
+            spreadRadius: -4,
           ),
         ],
       ),
-      child: const Icon(Icons.draw_outlined, color: Colors.white, size: 17),
+      child: const Icon(Icons.draw_outlined, color: Colors.white, size: 18),
     );
   }
 
@@ -1119,8 +1119,14 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       child: SafeArea(
         top: false,
         child: DecoratedBox(
-          decoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: DesignTokens.hairline1)),
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: DesignTokens.ink.withValues(alpha: 0.07),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
@@ -1198,7 +1204,6 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   Widget _buildEmptyState(S s) {
     if (_busy) return const Center(child: CircularProgressIndicator());
-    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -1214,89 +1219,92 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                 child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
               ),
               child: Container(
-                width: 104,
-                height: 104,
+                width: 116,
+                height: 116,
                 decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      DesignTokens.primarySoftStrong,
+                      DesignTokens.primarySoft,
+                    ],
+                  ),
                   shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: DesignTokens.primary.withValues(alpha: 0.16),
+                      blurRadius: 40,
+                      offset: const Offset(0, 16),
+                      spreadRadius: -12,
+                    ),
+                  ],
                 ),
-                child: Icon(
-                  Icons.draw_outlined,
-                  size: 52,
-                  color: scheme.onPrimaryContainer,
+                child: Center(
+                  child: Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      gradient: DesignTokens.primaryGradient,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: DesignTokens.primaryDeep.withValues(
+                            alpha: 0.35,
+                          ),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                          spreadRadius: -4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.draw_outlined,
+                      size: 32,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 28),
             Text(
               s['emptyTitle'],
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
+                fontSize: 25,
+                fontWeight: FontWeight.w700,
                 height: 1.2,
+                color: DesignTokens.ink,
+                letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               s['emptySubtitle'],
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
+              style: const TextStyle(fontSize: 15.5, color: DesignTokens.textMuted),
             ),
-            const SizedBox(height: 26),
-            FilledButton.icon(
+            const SizedBox(height: 30),
+            _GradientCta(
+              icon: Icons.file_open_outlined,
+              label: s['openDocument'],
               onPressed: _pickAndOpen,
-              icon: const Icon(Icons.file_open_outlined, size: 28),
-              label: Text(
-                s['openDocument'],
-                style: const TextStyle(fontSize: 19),
-              ),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 18,
-                ),
-              ),
             ),
-            if (ShareService.canShare) ...[
-              const SizedBox(height: 18),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+            if (ShareService.canShare || kIsWeb) ...[
+              const SizedBox(height: 22),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10,
+                runSpacing: 8,
                 children: [
-                  Icon(
-                    Icons.ios_share,
-                    size: 18,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    s['shareHint'],
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: scheme.onSurfaceVariant,
+                  if (ShareService.canShare)
+                    _HintPill(icon: Icons.ios_share, label: s['shareHint']),
+                  if (kIsWeb)
+                    _HintPill(
+                      icon: Icons.file_download_outlined,
+                      label: s['dragDropHint'],
                     ),
-                  ),
-                ],
-              ),
-            ],
-            if (kIsWeb) ...[
-              const SizedBox(height: 18),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.file_download_outlined,
-                    size: 18,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    s['dragDropHint'],
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
                 ],
               ),
             ],
@@ -1695,19 +1703,11 @@ class _ZoomControl extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: DesignTokens.surfacePaper,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: DesignTokens.hairline3),
-        boxShadow: [
-          BoxShadow(
-            color: DesignTokens.ink.withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: -8,
-          ),
-        ],
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+        boxShadow: DesignTokens.shadowLg,
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1818,6 +1818,103 @@ class _HeaderIconButton extends StatelessWidget {
                   : DesignTokens.iconStroke,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Full-width gradient primary action for the empty state, matching the
+/// bottom toolbar's send button so the "first" and "last" actions in the
+/// flow share one visual language.
+class _GradientCta extends StatelessWidget {
+  const _GradientCta({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: DesignTokens.primaryGradient,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+        boxShadow: [
+          BoxShadow(
+            color: DesignTokens.primaryDeep.withValues(alpha: 0.32),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+            spreadRadius: -8,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 18),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 24, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A quiet secondary hint ("or drag a file here") shown as a soft pill
+/// instead of bare icon+text floating on the canvas.
+class _HintPill extends StatelessWidget {
+  const _HintPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: DesignTokens.surfaceCard,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusPill),
+        boxShadow: DesignTokens.shadowSm,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: DesignTokens.textMuted),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+                color: DesignTokens.textMuted,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -198,17 +198,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history, size: 56, color: scheme.outline),
-            const SizedBox(height: 16),
+            Container(
+              width: 84,
+              height: 84,
+              decoration: const BoxDecoration(
+                color: DesignTokens.primarySoft,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.history,
+                size: 38,
+                color: DesignTokens.primaryDeep,
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(
               s['historyEmpty'],
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: DesignTokens.ink,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               s['historyEmptyHint'],
-              style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+              style: const TextStyle(fontSize: 14, color: DesignTokens.textMuted),
               textAlign: TextAlign.center,
             ),
           ],
@@ -245,11 +261,11 @@ class _HistoryTile extends StatelessWidget {
       child: ListTile(
         minVerticalPadding: 12,
         onTap: onTap,
-        leading: CircleAvatar(
-          backgroundColor: scheme.primaryContainer,
+        leading: const CircleAvatar(
+          backgroundColor: DesignTokens.primarySoft,
           child: Icon(
             Icons.picture_as_pdf_outlined,
-            color: scheme.onPrimaryContainer,
+            color: DesignTokens.primaryDeep,
           ),
         ),
         title: Row(

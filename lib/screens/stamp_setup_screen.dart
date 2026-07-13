@@ -6,6 +6,7 @@ import '../models/saved_mark.dart';
 import '../models/stamp_design.dart';
 import '../services/marks_service.dart';
 import '../services/stamp_service.dart';
+import '../theme/design_tokens.dart';
 import '../widgets/transparency_checkerboard.dart';
 import 'stamp_designer_screen.dart';
 
@@ -174,9 +175,9 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: scheme.outlineVariant),
+                    color: DesignTokens.surfaceMuted,
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                    boxShadow: DesignTokens.shadowSm,
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: _busy

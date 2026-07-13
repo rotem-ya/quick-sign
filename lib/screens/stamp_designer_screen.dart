@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../models/stamp_design.dart';
+import '../theme/design_tokens.dart';
 import '../widgets/transparency_checkerboard.dart';
 
 /// Built-in digital stamp designer: a classic editable template — up to three
@@ -215,23 +216,22 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
           children: [
             // Live preview — a checkerboard, not a solid color, so it's
             // visually obvious the stamp has no background at all.
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                height: 150,
-                decoration: BoxDecoration(
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                child: TransparencyCheckerboard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: CustomPaint(
-                      painter: _StampPreviewPainter(
-                        lines: _lines,
-                        color: _color,
-                        shape: _shape,
-                        border: _border,
-                      ),
+            Container(
+              height: 150,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                boxShadow: DesignTokens.shadowSm,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: TransparencyCheckerboard(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: CustomPaint(
+                    painter: _StampPreviewPainter(
+                      lines: _lines,
+                      color: _color,
+                      shape: _shape,
+                      border: _border,
                     ),
                   ),
                 ),
@@ -244,7 +244,6 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
                   const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
                 labelText: s['businessName'],
-                border: const OutlineInputBorder(),
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -254,7 +253,6 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
               style: const TextStyle(fontSize: 17),
               decoration: InputDecoration(
                 labelText: s['line2'],
-                border: const OutlineInputBorder(),
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -264,7 +262,6 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
               style: const TextStyle(fontSize: 17),
               decoration: InputDecoration(
                 labelText: s['line3'],
-                border: const OutlineInputBorder(),
               ),
               onChanged: (_) => setState(() {}),
             ),

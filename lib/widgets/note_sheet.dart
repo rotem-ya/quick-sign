@@ -86,7 +86,6 @@ class _NoteSheetState extends State<_NoteSheet> {
             style: const TextStyle(fontSize: 22),
             decoration: InputDecoration(
               hintText: s['noteHint'],
-              border: const OutlineInputBorder(),
             ),
             onSubmitted: (_) => _confirm(),
           ),

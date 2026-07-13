@@ -7,6 +7,7 @@ import '../models/document_session.dart';
 import '../models/placement.dart';
 import '../services/import_service.dart';
 import '../services/pdf_render_service.dart';
+import '../theme/design_tokens.dart';
 
 enum _StagedKind { blank, image, pdf }
 
@@ -475,8 +476,10 @@ class _ExistingPageTile extends StatelessWidget {
                 height: 130,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  border: Border.all(color: scheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
+                  boxShadow: DesignTokens.shadowSm,
                 ),
+                clipBehavior: Clip.antiAlias,
                 child: Opacity(
                   opacity: deleted ? 0.3 : 1,
                   child: FutureBuilder<Uint8List>(
@@ -550,9 +553,11 @@ class _StagedTile extends StatelessWidget {
                 width: 92,
                 height: 130,
                 decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  border: Border.all(color: scheme.outlineVariant),
+                  color: DesignTokens.primarySoft,
+                  borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
+                  boxShadow: DesignTokens.shadowSm,
                 ),
+                clipBehavior: Clip.antiAlias,
                 child: switch (item.kind) {
                   _StagedKind.blank => Icon(
                     Icons.insert_drive_file_outlined,

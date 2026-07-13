@@ -8,6 +8,7 @@ import '../services/marks_service.dart';
 import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
+import '../theme/design_tokens.dart';
 import '../widgets/signature_sheet.dart';
 import '../widgets/transparency_checkerboard.dart';
 import 'stamp_designer_screen.dart';
@@ -344,19 +345,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _SectionTitle(s['profile']),
+                _SectionTitle(s['profile'], icon: Icons.person_outline),
                 TextField(
                   controller: _nameController,
                   style: const TextStyle(fontSize: 18),
                   decoration: InputDecoration(
                     labelText: s['profileName'],
                     prefixIcon: const Icon(Icons.person_outline),
-                    border: const OutlineInputBorder(),
                   ),
                   onSubmitted: _settings.setName,
                 ),
                 const SizedBox(height: 24),
-                _SectionTitle(s['account']),
+                _SectionTitle(s['account'], icon: Icons.shield_outlined),
                 Card(
                   margin: EdgeInsets.zero,
                   child: ListTile(
@@ -374,7 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                _SectionTitle(s['savedSignatures']),
+                _SectionTitle(s['savedSignatures'], icon: Icons.draw_outlined),
                 for (final mark in _signatures) ...[
                   _MarkTile(
                     mark: mark,
@@ -391,7 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
                 _AddMarkTile(label: s['addSignature'], onTap: _addSignature),
                 const SizedBox(height: 24),
-                _SectionTitle(s['savedStamps']),
+                _SectionTitle(s['savedStamps'], icon: Icons.approval_outlined),
                 for (final mark in _stamps) ...[
                   _MarkTile(
                     mark: mark,
@@ -408,7 +408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
                 _AddMarkTile(label: s['addStamp'], onTap: _addStamp),
                 const SizedBox(height: 24),
-                _SectionTitle(s['savedCombos']),
+                _SectionTitle(s['savedCombos'], icon: Icons.layers_outlined),
                 Text(
                   s['combosHint'],
                   style: TextStyle(
@@ -434,7 +434,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _AddMarkTile(label: s['addCombo'], onTap: _addCombo),
                 if (DefaultFolderService.isSupported) ...[
                   const SizedBox(height: 24),
-                  _SectionTitle(s['defaultFolder']),
+                  _SectionTitle(s['defaultFolder'], icon: Icons.folder_open_outlined),
                   Card(
                     margin: EdgeInsets.zero,
                     child: _folderName == null
@@ -473,7 +473,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
                 const SizedBox(height: 24),
-                _SectionTitle(s['backup']),
+                _SectionTitle(s['backup'], icon: Icons.cloud_upload_outlined),
                 Card(
                   margin: EdgeInsets.zero,
                   child: Column(
@@ -513,7 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                _SectionTitle(s['about']),
+                _SectionTitle(s['about'], icon: Icons.info_outline),
                 Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
@@ -546,21 +546,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
+  const _SectionTitle(this.title, {this.icon});
 
   final String title;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+      padding: const EdgeInsets.only(bottom: 12, top: 4),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: DesignTokens.primarySoft,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 15, color: DesignTokens.primaryDeep),
+            ),
+            const SizedBox(width: 9),
+          ],
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+              color: DesignTokens.ink,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -591,21 +609,25 @@ class _MarkTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: isDefault ? scheme.primaryContainer.withValues(alpha: 0.35) : null,
+    return Container(
+      decoration: BoxDecoration(
+        color: DesignTokens.surfaceCard,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+        border: isDefault
+            ? Border.all(color: DesignTokens.primary, width: 1.6)
+            : null,
+        boxShadow: DesignTokens.shadowSm,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
               child: Container(
                 width: 88,
                 height: 56,
-                decoration: BoxDecoration(
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
+                color: DesignTokens.surfaceMuted,
                 child: TransparencyCheckerboard(
                   child: Padding(
                     padding: const EdgeInsets.all(4),
@@ -617,6 +639,7 @@ class _MarkTile extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: InkWell(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
                 onTap: onRename,
                 child: Row(
                   children: [
@@ -624,15 +647,16 @@ class _MarkTile extends StatelessWidget {
                       child: Text(
                         mark.name,
                         style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w600,
+                          color: DesignTokens.ink,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Icon(Icons.edit, size: 14, color: scheme.outline),
+                    Icon(Icons.edit, size: 13, color: DesignTokens.textFaint),
                   ],
                 ),
               ),
@@ -641,14 +665,14 @@ class _MarkTile extends StatelessWidget {
               tooltip: isDefault ? s['unsetDefault'] : s['setDefault'],
               onPressed: onToggleDefault,
               icon: Icon(
-                isDefault ? Icons.star : Icons.star_border,
-                color: isDefault ? scheme.primary : scheme.outline,
+                isDefault ? Icons.star_rounded : Icons.star_outline_rounded,
+                color: isDefault ? DesignTokens.primary : DesignTokens.textFaint,
               ),
             ),
             IconButton(
               tooltip: editTooltip,
               onPressed: onEdit,
-              icon: Icon(editIcon),
+              icon: Icon(editIcon, color: DesignTokens.iconStroke),
             ),
             IconButton(
               tooltip: s['delete'],
@@ -764,15 +788,47 @@ class _AddMarkTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: const Icon(Icons.add),
-      label: Align(alignment: Alignment.centerLeft, child: Text(label)),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(double.infinity, 52),
-        foregroundColor: scheme.primary,
-        alignment: Alignment.centerLeft,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: DesignTokens.primarySoft,
+            borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: const BoxDecoration(
+                    color: DesignTokens.primarySoftStrong,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.add,
+                    size: 18,
+                    color: DesignTokens.primaryDeep,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: DesignTokens.primaryDeep,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

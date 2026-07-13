@@ -31,54 +31,67 @@ class _ToolboxPanelState extends State<ToolboxPanel> {
     final s = S.of(context);
     return Material(
       color: DesignTokens.surfaceHeader,
-      elevation: 4,
       child: SizedBox(
         width: 380,
-        child: Column(
-          children: [
-            SafeArea(
-              bottom: false,
-              left: false,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: DesignTokens.hairline1),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: const Border(
+              left: BorderSide(color: DesignTokens.hairline1),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: DesignTokens.ink.withValues(alpha: 0.08),
+                blurRadius: 24,
+                offset: const Offset(-6, 0),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              SafeArea(
+                bottom: false,
+                left: false,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: DesignTokens.hairline1),
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _TabSegment(
-                          selected: _tab,
-                          onSelected: (tab) => setState(() => _tab = tab),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _TabSegment(
+                            selected: _tab,
+                            onSelected: (tab) => setState(() => _tab = tab),
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: s['close'],
-                        onPressed: widget.onClose,
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
+                        IconButton(
+                          tooltip: s['close'],
+                          onPressed: widget.onClose,
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: IndexedStack(
-                index: _tab == ToolboxTab.settings ? 0 : 1,
-                sizing: StackFit.expand,
-                children: [
-                  const SettingsScreen(embedded: true),
-                  if (HistoryService.isSupported)
-                    const HistoryScreen(embedded: true)
-                  else
-                    const SizedBox.shrink(),
-                ],
+              Expanded(
+                child: IndexedStack(
+                  index: _tab == ToolboxTab.settings ? 0 : 1,
+                  sizing: StackFit.expand,
+                  children: [
+                    const SettingsScreen(embedded: true),
+                    if (HistoryService.isSupported)
+                      const HistoryScreen(embedded: true)
+                    else
+                      const SizedBox.shrink(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -94,28 +107,35 @@ class _TabSegment extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: _TabButton(
-            label: s['settings'],
-            icon: Icons.settings_outlined,
-            selected: selected == ToolboxTab.settings,
-            onTap: () => onSelected(ToolboxTab.settings),
-          ),
-        ),
-        if (HistoryService.isSupported) ...[
-          const SizedBox(width: 6),
-          Expanded(
-            child: _TabButton(
-              label: s['history'],
-              icon: Icons.history,
-              selected: selected == ToolboxTab.history,
-              onTap: () => onSelected(ToolboxTab.history),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: DesignTokens.surfaceMuted,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
+          children: [
+            Expanded(
+              child: _TabButton(
+                label: s['settings'],
+                icon: Icons.settings_outlined,
+                selected: selected == ToolboxTab.settings,
+                onTap: () => onSelected(ToolboxTab.settings),
+              ),
             ),
-          ),
-        ],
-      ],
+            if (HistoryService.isSupported)
+              Expanded(
+                child: _TabButton(
+                  label: s['history'],
+                  icon: Icons.history,
+                  selected: selected == ToolboxTab.history,
+                  onTap: () => onSelected(ToolboxTab.history),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -136,28 +156,37 @@ class _TabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? DesignTokens.primaryDeep : DesignTokens.textMuted;
-    return Material(
-      color: selected ? DesignTokens.primarySoft : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                  color: color,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: selected ? DesignTokens.surfaceCard : Colors.transparent,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
+        boxShadow: selected ? DesignTokens.shadowSm : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: color,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -28,37 +28,44 @@ class BottomToolbar extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          children: [
-            _ToolButton(
-              icon: Icons.draw_outlined,
-              selectedIcon: Icons.draw,
-              label: s['sign'],
-              selected: armedTool == ToolbarTool.signature,
-              enabled: enabled,
-              onPressed: () => onToolSelected(ToolbarTool.signature),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: DesignTokens.surfaceMuted,
+            borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: [
+                _ToolButton(
+                  icon: Icons.draw_outlined,
+                  selectedIcon: Icons.draw,
+                  label: s['sign'],
+                  selected: armedTool == ToolbarTool.signature,
+                  enabled: enabled,
+                  onPressed: () => onToolSelected(ToolbarTool.signature),
+                ),
+                _ToolButton(
+                  icon: Icons.approval_outlined,
+                  selectedIcon: Icons.approval,
+                  label: s['stamp'],
+                  selected: armedTool == ToolbarTool.stamp,
+                  enabled: enabled,
+                  onPressed: () => onToolSelected(ToolbarTool.stamp),
+                ),
+                _ToolButton(
+                  icon: Icons.sticky_note_2_outlined,
+                  selectedIcon: Icons.sticky_note_2,
+                  label: s['note'],
+                  selected: armedTool == ToolbarTool.note,
+                  enabled: enabled,
+                  onPressed: () => onToolSelected(ToolbarTool.note),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _ToolButton(
-              icon: Icons.approval_outlined,
-              selectedIcon: Icons.approval,
-              label: s['stamp'],
-              selected: armedTool == ToolbarTool.stamp,
-              enabled: enabled,
-              onPressed: () => onToolSelected(ToolbarTool.stamp),
-            ),
-            const SizedBox(width: 8),
-            _ToolButton(
-              icon: Icons.sticky_note_2_outlined,
-              selectedIcon: Icons.sticky_note_2,
-              label: s['note'],
-              selected: armedTool == ToolbarTool.note,
-              enabled: enabled,
-              onPressed: () => onToolSelected(ToolbarTool.note),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 11),
+        const SizedBox(height: 12),
         _SendButton(enabled: enabled, label: s['send'], onPressed: onSend),
       ],
     );
@@ -90,28 +97,38 @@ class _ToolButton extends StatelessWidget {
         ? DesignTokens.primaryDeep
         : DesignTokens.textMuted;
     return Expanded(
-      child: Material(
-        color: selected ? DesignTokens.primarySoft : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: enabled ? onPressed : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(selected ? selectedIcon : icon, size: 21, color: color),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: color,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: selected ? DesignTokens.surfaceCard : Colors.transparent,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+          boxShadow: selected ? DesignTokens.shadowSm : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+            onTap: enabled ? onPressed : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(selected ? selectedIcon : icon, size: 21, color: color),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: color,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -137,8 +154,8 @@ class _SendButton extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: enabled ? DesignTokens.primaryGradient : null,
-        color: enabled ? null : DesignTokens.hairline3,
-        borderRadius: BorderRadius.circular(16),
+        color: enabled ? null : DesignTokens.primarySoft,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
         boxShadow: enabled
             ? [
                 BoxShadow(
@@ -152,9 +169,9 @@ class _SendButton extends StatelessWidget {
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
           onTap: enabled ? onPressed : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 15),
@@ -164,7 +181,9 @@ class _SendButton extends StatelessWidget {
                 Icon(
                   Icons.send_outlined,
                   size: 19,
-                  color: enabled ? Colors.white : DesignTokens.textFaint,
+                  color: enabled
+                      ? Colors.white
+                      : DesignTokens.primaryDeep.withValues(alpha: 0.45),
                 ),
                 const SizedBox(width: 9),
                 Text(
@@ -172,7 +191,9 @@ class _SendButton extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: enabled ? Colors.white : DesignTokens.textFaint,
+                    color: enabled
+                        ? Colors.white
+                        : DesignTokens.primaryDeep.withValues(alpha: 0.45),
                   ),
                 ),
               ],

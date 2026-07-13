@@ -830,84 +830,78 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     final s = S.of(context);
     final defaultFolder = await _folderService.folderName();
     if (!mounted) return;
+    final rows = <_ActionSheetRow>[
+      // One-tap save into the folder chosen in Settings — the practical
+      // "connect to Drive/OneDrive" the field team asked for, without any
+      // account sign-in inside the app.
+      if (defaultFolder != null)
+        _ActionSheetRow(
+          icon: Icons.bolt,
+          iconColor: DesignTokens.warning,
+          iconBg: DesignTokens.warningSoft,
+          title: s['saveToDefaultFolder'],
+          subtitle: defaultFolder,
+          onTap: () async {
+            final ok = await _folderService.saveFile(signedBytes, fileName);
+            _snack(
+              ok
+                  ? '${s['savedToDefaultFolder']} — $defaultFolder'
+                  : s['exportError'],
+            );
+          },
+        ),
+      if (ShareService.canShare)
+        _ActionSheetRow(
+          icon: Icons.share_outlined,
+          title: s['share'],
+          onTap: () => _shareService.shareBytes(signedBytes, fileName),
+        ),
+      // System save dialog — Drive / OneDrive / shared folders / device
+      // storage. On the web this becomes a browser download.
+      _ActionSheetRow(
+        icon: ShareService.canShare
+            ? Icons.drive_folder_upload_outlined
+            : Icons.download_outlined,
+        title: ShareService.canShare ? s['saveTo'] : s['download'],
+        onTap: () async {
+          final saved = await _shareService.saveAs(signedBytes, fileName);
+          if (saved) _snack(s['copySaved']);
+        },
+      ),
+      _ActionSheetRow(
+        icon: Icons.print_outlined,
+        title: s['print'],
+        onTap: () => _printService.printPdf(signedBytes, fileName),
+      ),
+    ];
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // One-tap save into the folder chosen in Settings — the
-            // practical "connect to Drive/OneDrive" the field team asked
-            // for, without any account sign-in inside the app.
-            if (defaultFolder != null)
-              ListTile(
-                leading: Icon(Icons.bolt, size: 28, color: Colors.amber[800]),
-                title: Text(
-                  s['saveToDefaultFolder'],
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: DesignTokens.hairline4,
+                  borderRadius: BorderRadius.circular(DesignTokens.radiusPill),
+                ),
+              ),
+              for (var i = 0; i < rows.length; i++) ...[
+                rows[i].build(sheetContext),
+                if (i < rows.length - 1)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 14),
+                    child: Divider(height: 1),
                   ),
-                ),
-                subtitle: Text(
-                  defaultFolder,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                minTileHeight: 56,
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  final ok = await _folderService.saveFile(
-                    signedBytes,
-                    fileName,
-                  );
-                  _snack(
-                    ok
-                        ? '${s['savedToDefaultFolder']} — $defaultFolder'
-                        : s['exportError'],
-                  );
-                },
-              ),
-            if (ShareService.canShare)
-              ListTile(
-                leading: const Icon(Icons.share, size: 28),
-                title: Text(s['share'], style: const TextStyle(fontSize: 18)),
-                minTileHeight: 56,
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  await _shareService.shareBytes(signedBytes, fileName);
-                },
-              ),
-            // System save dialog — Drive / OneDrive / shared folders /
-            // device storage. On the web this becomes a browser download.
-            ListTile(
-              leading: Icon(
-                ShareService.canShare
-                    ? Icons.drive_folder_upload_outlined
-                    : Icons.download,
-                size: 28,
-              ),
-              title: Text(
-                ShareService.canShare ? s['saveTo'] : s['download'],
-                style: const TextStyle(fontSize: 18),
-              ),
-              minTileHeight: 56,
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                final saved = await _shareService.saveAs(signedBytes, fileName);
-                if (saved) _snack(s['copySaved']);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.print_outlined, size: 28),
-              title: Text(s['print'], style: const TextStyle(fontSize: 18)),
-              minTileHeight: 56,
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await _printService.printPdf(signedBytes, fileName);
-              },
-            ),
-          ],
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -1973,6 +1967,91 @@ class _PagePill extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w700,
             color: DesignTokens.primaryDeep,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of the send/share action sheet — icon chip + title(+subtitle),
+/// generous touch target, no ListTile chrome. Closes the sheet, then runs
+/// the action, matching a native system share sheet's feel more than the
+/// previous plain ListTile list did.
+class _ActionSheetRow {
+  _ActionSheetRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.iconColor,
+    this.iconBg,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Color? iconColor;
+  final Color? iconBg;
+  final Future<void> Function() onTap;
+
+  Widget build(BuildContext sheetContext) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+        onTap: () {
+          Navigator.of(sheetContext).pop();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: iconBg ?? DesignTokens.surfaceMuted,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  size: 21,
+                  color: iconColor ?? DesignTokens.iconStroke,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w600,
+                        color: DesignTokens.ink,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: DesignTokens.textMuted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -22,13 +22,17 @@ class PdfRenderService {
   List<Size> _pageSizes = const [];
   final Map<int, Future<Uint8List>> _cache = {};
 
-  /// Render scale relative to the page's point size. 2x ≈ 144dpi — crisp on
-  /// phones without huge bitmaps. Long documents render lighter because every
-  /// page image stays in memory while the document is open.
-  static const double renderScale = 2.0;
-  static const double lightRenderScale = 1.4;
+  /// Render scale relative to the page's point size. Long documents render
+  /// lighter because every page image stays in memory while the document is
+  /// open. [maxRenderWidth] is the real bottleneck for large-format sheets
+  /// (e.g. an ANSI-D engineering drawing is ~2448pt wide at 72dpi) — at the
+  /// old 2048px cap those pages rendered *below* their native resolution
+  /// before any on-screen zoom even happened, which is what made zooming
+  /// into fine linework look pixelated rather than just "not sharper".
+  static const double renderScale = 3.0;
+  static const double lightRenderScale = 1.8;
   static const int lightModePageThreshold = 12;
-  static const double maxRenderWidth = 2048;
+  static const double maxRenderWidth = 4096;
 
   double get _effectiveScale => _pageSizes.length > lightModePageThreshold
       ? lightRenderScale

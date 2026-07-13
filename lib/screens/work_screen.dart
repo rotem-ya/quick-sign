@@ -154,6 +154,16 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   // document, instead of navigating away to a full-screen route.
   bool _toolboxOpen = false;
 
+  /// The docked side panel is a fixed 380px wide (see ToolboxPanel) — fine
+  /// alongside a document on a desktop-width browser window, but on a
+  /// narrow mobile-web viewport it doesn't fit and cuts off content past
+  /// the screen edge. Below this width, fall back to the same full-screen
+  /// Settings/History navigation the native app already uses everywhere.
+  static const double _dockedToolboxMinWidth = 760;
+
+  bool _dockedToolboxAvailable(BuildContext context) =>
+      kIsWeb && MediaQuery.sizeOf(context).width >= _dockedToolboxMinWidth;
+
   @override
   void initState() {
     super.initState();
@@ -947,7 +957,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                           ? _buildEmptyState(s)
                           : _buildDocument(),
                     ),
-                    if (kIsWeb && _toolboxOpen)
+                    if (_dockedToolboxAvailable(context) && _toolboxOpen)
                       ToolboxPanel(
                         onClose: () => setState(() => _toolboxOpen = false),
                       ),
@@ -1014,7 +1024,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                         tooltip: s['newDocument'],
                         onTap: _busy ? null : _pickAndOpen,
                       ),
-                    if (kIsWeb)
+                    if (_dockedToolboxAvailable(context))
                       _HeaderIconButton(
                         icon: Icons.dashboard_customize_outlined,
                         tooltip: s['toolbox'],

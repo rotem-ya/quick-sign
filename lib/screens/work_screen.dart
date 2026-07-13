@@ -1429,8 +1429,9 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
               bottom: 18,
               end: 16,
               child: _ZoomControl(
-                onZoomIn: () => _zoomBy(1.4),
-                onZoomOut: () => _zoomBy(1 / 1.4),
+                transformation: _transformation,
+                onZoomIn: () => _zoomBy(1.6),
+                onZoomOut: () => _zoomBy(1 / 1.6),
               ),
             ),
             // Invisible: keeps the header's page pill (see _buildTopBar) in
@@ -1665,8 +1666,13 @@ class _PageItem extends StatelessWidget {
 /// Floating zoom control — a single rounded card with +/− stacked and a
 /// hairline divider, matching the hi-fi handoff exactly.
 class _ZoomControl extends StatelessWidget {
-  const _ZoomControl({required this.onZoomIn, required this.onZoomOut});
+  const _ZoomControl({
+    required this.transformation,
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
 
+  final TransformationController transformation;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
 
@@ -1696,6 +1702,27 @@ class _ZoomControl extends StatelessWidget {
               icon: Icons.add,
               label: s['zoomIn'],
               onTap: onZoomIn,
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(color: DesignTokens.hairline3),
+              child: SizedBox(width: 40, height: 1),
+            ),
+            AnimatedBuilder(
+              animation: transformation,
+              builder: (context, _) => SizedBox(
+                width: 40,
+                height: 28,
+                child: Center(
+                  child: Text(
+                    '${(transformation.value.scale2D * 100).round()}%',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: DesignTokens.iconStroke2,
+                    ),
+                  ),
+                ),
+              ),
             ),
             const DecoratedBox(
               decoration: BoxDecoration(color: DesignTokens.hairline3),

@@ -58,45 +58,46 @@ class _NoteSheetState extends State<_NoteSheet> {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomInset),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.suggestions.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final chip in widget.suggestions)
-                  ActionChip(
-                    label: Text(chip),
-                    onPressed: () => _append(chip),
-                  ),
-              ],
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.suggestions.isNotEmpty) ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final chip in widget.suggestions)
+                    ActionChip(
+                      label: Text(chip),
+                      onPressed: () => _append(chip),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              style: const TextStyle(fontSize: 22),
+              decoration: InputDecoration(hintText: s['noteHint']),
+              onSubmitted: (_) => _confirm(),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _confirm,
+              icon: const Icon(Icons.check),
+              label: Text(s['done']),
+              style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
+            ),
           ],
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            minLines: 1,
-            maxLines: 4,
-            style: const TextStyle(fontSize: 22),
-            decoration: InputDecoration(
-              hintText: s['noteHint'],
-            ),
-            onSubmitted: (_) => _confirm(),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _confirm,
-            icon: const Icon(Icons.check),
-            label: Text(s['done']),
-            style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
-          ),
-        ],
+        ),
       ),
     );
   }

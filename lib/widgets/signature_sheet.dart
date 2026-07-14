@@ -67,42 +67,48 @@ class _MarkPickerSheetState extends State<_MarkPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            s['chooseMark'],
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final mark in widget.marks)
-                _MarkChip(
-                  mark: mark,
-                  onTap: () => Navigator.of(
-                    context,
-                  ).pop(MarkPickerResult(mark: mark, allPages: _allPages)),
-                ),
-            ],
-          ),
-          if (widget.showAllPagesOption) ...[
-            const SizedBox(height: 8),
-            FilterChip(
-              avatar: _allPages
-                  ? null
-                  : const Icon(Icons.copy_all_outlined, size: 20),
-              label: Text(s['allPages']),
-              selected: _allPages,
-              onSelected: (v) => setState(() => _allPages = v),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              s['chooseMark'],
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final mark in widget.marks)
+                  _MarkChip(
+                    mark: mark,
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop(MarkPickerResult(mark: mark, allPages: _allPages)),
+                  ),
+              ],
+            ),
+            if (widget.showAllPagesOption) ...[
+              const SizedBox(height: 8),
+              FilterChip(
+                avatar: _allPages
+                    ? null
+                    : const Icon(Icons.copy_all_outlined, size: 20),
+                label: Text(s['allPages']),
+                selected: _allPages,
+                onSelected: (v) => setState(() => _allPages = v),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -174,54 +180,57 @@ class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 220,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
-              boxShadow: DesignTokens.shadowSm,
-              border: Border.all(color: DesignTokens.hairline2),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                boxShadow: DesignTokens.shadowSm,
+                border: Border.all(color: DesignTokens.hairline2),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Signature(
+                controller: _controller,
+                backgroundColor: Colors.white,
+              ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Signature(
-              controller: _controller,
-              backgroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _controller.clear,
-                  icon: const Icon(Icons.replay),
-                  label: Text(s['clear']),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(48, 52),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _controller.clear,
+                    icon: const Icon(Icons.replay),
+                    label: Text(s['clear']),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(48, 52),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  onPressed: _confirm,
-                  icon: const Icon(Icons.check),
-                  label: Text(s['done']),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(48, 52),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: _confirm,
+                    icon: const Icon(Icons.check),
+                    label: Text(s['done']),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(48, 52),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

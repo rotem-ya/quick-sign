@@ -116,10 +116,13 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   bool _busy = false;
   StreamSubscription<String>? _shareSub;
 
-  // Long-press area marking (normalized page coordinates).
+  // Long-press placement preview: a temporary frame at the standard size
+  // for the armed tool, which follows the finger while held — so the exact
+  // drop point can be fine-tuned before committing, the same way the
+  // placed item can still be dragged afterward. (Normalized page coords.)
   int? _markPageIndex;
-  Offset? _markStartN;
-  Offset? _markCurrentN;
+  Offset? _markCenterN;
+  Size? _markPreviewSizeN;
 
   // Document layout captured for programmatic zoom.
   Size _viewportSize = Size.zero;
@@ -378,23 +381,47 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
 
   // ── Long-press area marking ───────────────────────────────────────────────
 
+  /// Roughly how the preview frame's height relates to its width for each
+  /// tool — nothing more than a visual guide before the real content (a
+  /// specific saved signature/stamp image, or typed text) picks its own
+  /// exact aspect ratio at placement time.
+  static const double _signaturePreviewAspect = 0.42;
+  static const double _stampPreviewAspect = 0.6;
+  static const double _notePreviewAspect = 0.35;
+
   void _onMarkStart(int pageIndex, Offset local, Size pageSize) {
     if (_busy) return;
     unawaited(HapticFeedback.selectionClick());
+    final widthFraction = switch (_armedTool) {
+      ToolbarTool.signature => _markWidthFractionFor(
+        pageIndex,
+        _signatureWidthFraction,
+      ),
+      ToolbarTool.stamp => _markWidthFractionFor(pageIndex, _stampWidthFraction),
+      ToolbarTool.note => _noteWidthFractionFor(pageIndex),
+    };
+    final aspect = switch (_armedTool) {
+      ToolbarTool.signature => _signaturePreviewAspect,
+      ToolbarTool.stamp => _stampPreviewAspect,
+      ToolbarTool.note => _notePreviewAspect,
+    };
     setState(() {
       _markPageIndex = pageIndex;
-      _markStartN = Offset(
-        local.dx / pageSize.width,
-        local.dy / pageSize.height,
+      _markCenterN = Offset(
+        (local.dx / pageSize.width).clamp(0.0, 1.0),
+        (local.dy / pageSize.height).clamp(0.0, 1.0),
       );
-      _markCurrentN = _markStartN;
+      _markPreviewSizeN = Size(
+        widthFraction,
+        widthFraction * aspect * pageSize.width / pageSize.height,
+      );
     });
   }
 
   void _onMarkUpdate(int pageIndex, Offset local, Size pageSize) {
     if (_markPageIndex != pageIndex) return;
     setState(() {
-      _markCurrentN = Offset(
+      _markCenterN = Offset(
         (local.dx / pageSize.width).clamp(0.0, 1.0),
         (local.dy / pageSize.height).clamp(0.0, 1.0),
       );
@@ -402,31 +429,21 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
   }
 
   Future<void> _onMarkEnd(int pageIndex) async {
-    final start = _markStartN;
-    final current = _markCurrentN;
+    final center = _markCenterN;
     setState(() {
       _markPageIndex = null;
-      _markStartN = null;
-      _markCurrentN = null;
+      _markCenterN = null;
+      _markPreviewSizeN = null;
     });
-    if (start == null || current == null) return;
-
-    final rect = Rect.fromPoints(start, current);
-    final nx = rect.center.dx;
-    final ny = rect.center.dy;
-    // A meaningful drag (≥ 4% of page width) sets the placement size;
-    // a plain long-press uses the proportional defaults.
-    final double? widthOverride = rect.width >= 0.04
-        ? rect.width.clamp(0.05, 0.95)
-        : null;
+    if (center == null) return;
 
     switch (_armedTool) {
       case ToolbarTool.signature:
-        await _placeSignature(pageIndex, nx, ny, widthOverride);
+        await _placeSignature(pageIndex, center.dx, center.dy, null);
       case ToolbarTool.stamp:
-        await _placeStamp(pageIndex, nx, ny, widthOverride);
+        await _placeStamp(pageIndex, center.dx, center.dy, null);
       case ToolbarTool.note:
-        await _placeNote(pageIndex, nx, ny, widthOverride);
+        await _placeNote(pageIndex, center.dx, center.dy, null);
     }
   }
 
@@ -481,7 +498,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     if (defaultMark != null) {
       chosen = defaultMark;
     } else if (savedSignatures.isEmpty && savedCombos.isEmpty) {
-      _promptAddMark(MarkType.signature);
+      await _drawAndPlaceSignature(pageIndex, nx, ny, widthOverride);
       return;
     } else {
       final result = await showMarkPickerSheet(
@@ -513,6 +530,58 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     );
   }
 
+  /// No saved signature exists yet — rather than send the user away to
+  /// Settings mid-document, let them draw one right here and place it
+  /// immediately, then offer to keep it in the library for next time.
+  Future<void> _drawAndPlaceSignature(
+    int pageIndex,
+    double nx,
+    double ny,
+    double? widthOverride,
+  ) async {
+    final bytes = await showDrawCanvasSheet(context);
+    if (bytes == null || !mounted) return;
+    final placed = await _addImagePlacement(
+      type: PlacementType.signature,
+      bytes: bytes,
+      pages: [pageIndex],
+      nx: nx,
+      ny: ny,
+      widthFraction:
+          widthOverride ??
+          _markWidthFractionFor(pageIndex, _signatureWidthFraction),
+    );
+    if (placed.isEmpty || !mounted) return;
+    _offerToSaveSignature(bytes);
+  }
+
+  void _offerToSaveSignature(Uint8List bytes) {
+    final s = S.of(context);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            s['saveSignaturePrompt'],
+            style: const TextStyle(fontSize: 16),
+          ),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: s['save'],
+            onPressed: () {
+              unawaited(
+                _marksService.add(
+                  type: MarkType.signature,
+                  name: s['sign'],
+                  imageBytes: bytes,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+  }
+
   /// Small random tilt, in radians — only ever applied to stamps, never
   /// signatures, so each impression looks hand-stamped instead of a
   /// perfectly axis-aligned digital sticker.
@@ -535,7 +604,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     Uint8List? cleanBytes = defaultStamp?.imageBytes;
     if (cleanBytes == null) {
       if (stamps.isEmpty) {
-        _promptAddMark(MarkType.stamp);
+        _promptAddStamp();
         return;
       } else if (stamps.length == 1) {
         cleanBytes = stamps.single.imageBytes;
@@ -605,20 +674,16 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     }
   }
 
-  /// Nothing pre-prepared for this type yet — placing on the document never
-  /// opens a camera/gallery inline; preparing marks only happens in Settings.
-  void _promptAddMark(MarkType type) {
+  /// No saved stamp yet — unlike a signature, there's no quick "draw it
+  /// here" alternative for a stamp (it needs a photo/crop/background
+  /// removal, or the designer), so this still points to Settings.
+  void _promptAddStamp() {
     final s = S.of(context);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            type == MarkType.stamp
-                ? s['noSavedStamps']
-                : s['noSavedSignatures'],
-            style: const TextStyle(fontSize: 16),
-          ),
+          content: Text(s['noSavedStamps'], style: const TextStyle(fontSize: 16)),
           duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: s['settings'],
@@ -1415,10 +1480,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                               );
                             },
                           ),
-                          // Live selection rectangle while long-press marking.
+                          // Live placement preview while long-press marking.
                           if (_markPageIndex != null &&
-                              _markStartN != null &&
-                              _markCurrentN != null)
+                              _markCenterN != null &&
+                              _markPreviewSizeN != null)
                             _buildMarkRect(contentWidth, tops, heights),
                           ValueListenableBuilder<List<Placement>>(
                             valueListenable: session.placements,
@@ -1499,21 +1564,26 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     );
   }
 
-  /// The translucent rectangle drawn while the user long-press-drags to mark
-  /// where (and how big) the placement should be.
+  /// The translucent placement-preview frame shown while long-pressing —
+  /// fixed at the tool's standard size, following the finger so the drop
+  /// point can be fine-tuned before release commits it.
   Widget _buildMarkRect(
     double contentWidth,
     List<double> tops,
     List<double> heights,
   ) {
     final page = _markPageIndex!;
-    final rect = Rect.fromPoints(_markStartN!, _markCurrentN!);
+    final center = _markCenterN!;
+    final sizeN = _markPreviewSizeN!;
+    final pageHeight = heights[page];
+    final left = (center.dx - sizeN.width / 2).clamp(0.0, 1.0 - sizeN.width);
+    final top = (center.dy - sizeN.height / 2).clamp(0.0, 1.0 - sizeN.height);
     final scheme = Theme.of(context).colorScheme;
     return Positioned(
-      left: _pagePadding + rect.left * contentWidth,
-      top: tops[page] + rect.top * heights[page],
-      width: math.max(rect.width * contentWidth, 4),
-      height: math.max(rect.height * heights[page], 4),
+      left: _pagePadding + left * contentWidth,
+      top: tops[page] + top * pageHeight,
+      width: sizeN.width * contentWidth,
+      height: sizeN.height * pageHeight,
       child: IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(

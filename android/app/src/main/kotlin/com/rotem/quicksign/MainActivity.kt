@@ -23,11 +23,16 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private var viewChannel: MethodChannel? = null
     private var folderChannel: MethodChannel? = null
+    private var libraryChannel: MethodChannel? = null
     private var pendingPath: String? = null
     private var pendingFolderResult: MethodChannel.Result? = null
+    private var pendingLibraryResult: MethodChannel.Result? = null
 
     private val folderPrefs by lazy {
         getSharedPreferences("default_folder", Context.MODE_PRIVATE)
+    }
+    private val libraryPrefs by lazy {
+        getSharedPreferences("folder_library", Context.MODE_PRIVATE)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -67,6 +72,43 @@ class MainActivity : FlutterActivity() {
                         result.error("bad_args", "fileName/bytes required", null)
                     } else {
                         saveFileToFolder(fileName, bytes, result)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        libraryChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "quick_sign/folder_library",
+        )
+        libraryChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickFolder" -> pickLibraryFolder(result)
+                "listFolders" -> result.success(listLibraryFolders())
+                "removeFolder" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) {
+                        result.error("bad_args", "uri required", null)
+                    } else {
+                        removeLibraryFolder(Uri.parse(uri))
+                        result.success(null)
+                    }
+                }
+                "listFiles" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) {
+                        result.error("bad_args", "uri required", null)
+                    } else {
+                        result.success(listFilesInFolder(Uri.parse(uri)))
+                    }
+                }
+                "readFile" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) {
+                        result.error("bad_args", "uri required", null)
+                    } else {
+                        readLibraryFile(Uri.parse(uri), result)
                     }
                 }
                 else -> result.notImplemented()
@@ -137,7 +179,13 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_CODE_OPEN_TREE) return
+        when (requestCode) {
+            REQUEST_CODE_OPEN_TREE -> handleDefaultFolderResult(resultCode, data)
+            REQUEST_CODE_LIBRARY_TREE -> handleLibraryFolderResult(resultCode, data)
+        }
+    }
+
+    private fun handleDefaultFolderResult(resultCode: Int, data: Intent?) {
         val result = pendingFolderResult
         pendingFolderResult = null
         val uri = data?.data
@@ -224,8 +272,102 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // ── Folder library (SAF, read-only, any number of folders) ─────────────
+
+    private fun pickLibraryFolder(result: MethodChannel.Result) {
+        pendingLibraryResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+            )
+        }
+        try {
+            startActivityForResult(intent, REQUEST_CODE_LIBRARY_TREE)
+        } catch (_: Exception) {
+            result.success(null)
+            pendingLibraryResult = null
+        }
+    }
+
+    private fun handleLibraryFolderResult(resultCode: Int, data: Intent?) {
+        val result = pendingLibraryResult
+        pendingLibraryResult = null
+        val uri = data?.data
+        if (resultCode != Activity.RESULT_OK || uri == null) {
+            result?.success(null)
+            return
+        }
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
+        result?.success(addLibraryFolder(uri))
+    }
+
+    private fun addLibraryFolder(uri: Uri): Map<String, String> {
+        val current = HashSet(libraryPrefs.getStringSet(KEY_LIBRARY_FOLDERS, emptySet()) ?: emptySet())
+        current.add(uri.toString())
+        libraryPrefs.edit().putStringSet(KEY_LIBRARY_FOLDERS, current).apply()
+        return mapOf("uri" to uri.toString(), "name" to folderDisplayName(uri))
+    }
+
+    private fun listLibraryFolders(): List<Map<String, String>> {
+        val stored = libraryPrefs.getStringSet(KEY_LIBRARY_FOLDERS, emptySet()) ?: emptySet()
+        val granted = contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri }
+            .toSet()
+        val valid = stored.filter { Uri.parse(it) in granted }
+        if (valid.size != stored.size) {
+            libraryPrefs.edit().putStringSet(KEY_LIBRARY_FOLDERS, valid.toSet()).apply()
+        }
+        return valid.map { mapOf("uri" to it, "name" to folderDisplayName(Uri.parse(it))) }
+    }
+
+    private fun removeLibraryFolder(uri: Uri) {
+        val current = HashSet(libraryPrefs.getStringSet(KEY_LIBRARY_FOLDERS, emptySet()) ?: emptySet())
+        current.remove(uri.toString())
+        libraryPrefs.edit().putStringSet(KEY_LIBRARY_FOLDERS, current).apply()
+        try {
+            contentResolver.releasePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        } catch (_: Exception) {
+            // Already released — fine.
+        }
+    }
+
+    private fun listFilesInFolder(treeUri: Uri): List<Map<String, Any?>> {
+        val dir = DocumentFile.fromTreeUri(this, treeUri) ?: return emptyList()
+        return dir.listFiles().filter { it.isFile }.map { f ->
+            mapOf(
+                "uri" to f.uri.toString(),
+                "name" to (f.name ?: ""),
+                "size" to f.length(),
+                "lastModified" to f.lastModified(),
+            )
+        }
+    }
+
+    private fun readLibraryFile(uri: Uri, result: MethodChannel.Result) {
+        try {
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            if (bytes == null) {
+                result.error("read_failed", "Could not open stream", null)
+            } else {
+                result.success(bytes)
+            }
+        } catch (e: Exception) {
+            result.error("read_failed", e.message, null)
+        }
+    }
+
     companion object {
         private const val REQUEST_CODE_OPEN_TREE = 4242
+        private const val REQUEST_CODE_LIBRARY_TREE = 4243
         private const val KEY_FOLDER_URI = "folder_uri"
+        private const val KEY_LIBRARY_FOLDERS = "folders"
     }
 }

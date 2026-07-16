@@ -355,11 +355,11 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
               ),
             ],
             const SizedBox(height: 22),
-            FilledButton.icon(
+            ElevatedButton.icon(
               onPressed: _lines.isEmpty ? null : _save,
               icon: const Icon(Icons.check),
               label: Text(s['useStamp'], style: const TextStyle(fontSize: 17)),
-              style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(48, 56)),
             ),
           ],
         ),

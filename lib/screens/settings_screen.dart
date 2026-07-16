@@ -120,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(fontSize: 15, height: 1.4),
         ),
         actions: [
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: Text(s['done']),
           ),
@@ -290,7 +290,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: Text(s['cancel']),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
             child: Text(s['done']),
           ),
@@ -888,7 +888,7 @@ class _ComboPickerDialogState extends State<_ComboPickerDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(s['cancel']),
         ),
-        FilledButton(
+        ElevatedButton(
           onPressed: _signature == null || _stamp == null
               ? null
               : () => Navigator.of(

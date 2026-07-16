@@ -218,11 +218,11 @@ class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   flex: 2,
-                  child: FilledButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: _confirm,
                     icon: const Icon(Icons.check),
                     label: Text(s['done']),
-                    style: FilledButton.styleFrom(
+                    style: ElevatedButton.styleFrom(
                       minimumSize: const Size(48, 52),
                     ),
                   ),

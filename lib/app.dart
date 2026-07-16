@@ -94,11 +94,26 @@ class QuickSignApp extends StatelessWidget {
         color: isLight ? DesignTokens.surfaceCard : scheme.surfaceContainerLow,
         clipBehavior: Clip.antiAlias,
       ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
+      // Using ElevatedButton (styled flat, no shadow) instead of FilledButton
+      // as the app's primary CTA button: on web, a themed button's label
+      // renders invisible whenever the theme sets a custom `textStyle` —
+      // reproduced with FilledButton AND ElevatedButton alike, gone as soon
+      // as `textStyle` is dropped from the theme (button-level `style:`
+      // overrides, like stamp_setup_screen's minimumSize, are unaffected).
+      // Root cause not fully isolated (looks like a Flutter/CanvasKit merge
+      // bug between the theme's WidgetStateProperty<TextStyle> and the
+      // resolved foreground color) — the label font now falls back to
+      // labelLarge (still Heebo, still bold via textTheme below) instead of
+      // a button-specific size.
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
+          disabledBackgroundColor: scheme.onSurface.withValues(alpha: 0.12),
+          disabledForegroundColor: scheme.onSurface.withValues(alpha: 0.38),
+          elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(

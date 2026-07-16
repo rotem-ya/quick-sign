@@ -185,7 +185,7 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: Text(s['cancel']),
             ),
-            FilledButton(
+            ElevatedButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: Text(s['continue']),
             ),
@@ -365,11 +365,11 @@ class _PageManagerScreenState extends State<PageManagerScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
-                          child: FilledButton.icon(
+                          child: ElevatedButton.icon(
                             onPressed: _apply,
                             icon: const Icon(Icons.check),
                             label: Text(s['apply']),
-                            style: FilledButton.styleFrom(
+                            style: ElevatedButton.styleFrom(
                               minimumSize: const Size(48, 56),
                             ),
                           ),

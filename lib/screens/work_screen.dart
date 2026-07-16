@@ -24,6 +24,7 @@ import '../models/placement.dart';
 import '../models/saved_mark.dart';
 import '../services/default_folder_service.dart';
 import '../services/export_service.dart';
+import '../services/folder_library_service.dart';
 import '../services/history_service.dart';
 import '../services/import_service.dart';
 import '../services/marks_service.dart';
@@ -47,6 +48,7 @@ import '../widgets/toolbox_panel.dart';
 import '../widgets/wheel_scroll_stub.dart'
     if (dart.library.js_interop) '../widgets/wheel_scroll_web.dart'
     as wheel_scroll;
+import 'folder_browser_screen.dart';
 import 'history_screen.dart';
 import 'page_manager_screen.dart';
 import 'settings_screen.dart';
@@ -848,7 +850,7 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(s['cancel']),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(s['continue']),
           ),
@@ -1082,6 +1084,23 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                                   MaterialPageRoute(
                                     builder: (_) => HistoryScreen(
                                       onView: (bytes, name) {
+                                        Navigator.of(context).pop();
+                                        _openHistoryEntry(bytes, name);
+                                      },
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      if (FolderLibraryService.isSupported)
+                        _HeaderIconButton(
+                          icon: Icons.folder_open_outlined,
+                          tooltip: s['folderLibrary'],
+                          onTap: _busy
+                              ? null
+                              : () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => FolderBrowserScreen(
+                                      onOpen: (bytes, name) {
                                         Navigator.of(context).pop();
                                         _openHistoryEntry(bytes, name);
                                       },

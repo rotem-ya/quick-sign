@@ -263,11 +263,11 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
           const SizedBox(width: 12),
           Expanded(
             flex: 2,
-            child: FilledButton.icon(
+            child: ElevatedButton.icon(
               onPressed: _busy ? null : _confirm,
               icon: const Icon(Icons.check),
               label: Text(s['useStamp']),
-              style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(48, 56)),
             ),
           ),
         ],
@@ -287,11 +287,11 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
           const SizedBox(width: 12),
           Expanded(
             flex: 2,
-            child: FilledButton.icon(
+            child: ElevatedButton.icon(
               onPressed: _busy ? null : _applyCrop,
               icon: const Icon(Icons.crop),
               label: Text(s['done']),
-              style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(48, 56)),
             ),
           ),
         ],
@@ -315,11 +315,11 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
             const SizedBox(width: 12),
             Expanded(
               flex: 2,
-              child: FilledButton.icon(
+              child: ElevatedButton.icon(
                 onPressed: _busy ? null : () => _capture(fromCamera: true),
                 icon: const Icon(Icons.photo_camera_outlined),
                 label: Text(s['captureStamp']),
-                style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(48, 56)),
               ),
             ),
           ],

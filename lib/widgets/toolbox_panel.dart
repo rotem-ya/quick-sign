@@ -3,12 +3,14 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../screens/folder_browser_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/settings_screen.dart';
+import '../services/folder_library_service.dart';
 import '../services/history_service.dart';
 import '../theme/design_tokens.dart';
 
-enum ToolboxTab { settings, history }
+enum ToolboxTab { settings, history, folders }
 
 /// Web-only docked side panel — settings (incl. the signatures/stamps
 /// library) and history live here instead of a full-screen navigation, so
@@ -86,12 +88,19 @@ class _ToolboxPanelState extends State<ToolboxPanel> {
               ),
               Expanded(
                 child: IndexedStack(
-                  index: _tab == ToolboxTab.settings ? 0 : 1,
+                  index: _tab.index,
                   sizing: StackFit.expand,
                   children: [
                     const SettingsScreen(embedded: true),
                     if (HistoryService.isSupported)
                       HistoryScreen(embedded: true, onView: widget.onViewDocument)
+                    else
+                      const SizedBox.shrink(),
+                    if (FolderLibraryService.isSupported)
+                      FolderBrowserScreen(
+                        embedded: true,
+                        onOpen: widget.onViewDocument,
+                      )
                     else
                       const SizedBox.shrink(),
                   ],
@@ -140,6 +149,15 @@ class _TabSegment extends StatelessWidget {
                   onTap: () => onSelected(ToolboxTab.history),
                 ),
               ),
+            if (FolderLibraryService.isSupported)
+              Expanded(
+                child: _TabButton(
+                  label: s['folders'],
+                  icon: Icons.folder_open_outlined,
+                  selected: selected == ToolboxTab.folders,
+                  onTap: () => onSelected(ToolboxTab.folders),
+                ),
+              ),
           ],
         ),
       ),
@@ -184,12 +202,16 @@ class _TabButton extends StatelessWidget {
               children: [
                 Icon(icon, size: 18, color: color),
                 const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                    color: color,
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      color: color,
+                    ),
                   ),
                 ),
               ],

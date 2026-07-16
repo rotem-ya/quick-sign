@@ -90,11 +90,11 @@ class _NoteSheetState extends State<_NoteSheet> {
               onSubmitted: (_) => _confirm(),
             ),
             const SizedBox(height: 12),
-            FilledButton.icon(
+            ElevatedButton.icon(
               onPressed: _confirm,
               icon: const Icon(Icons.check),
               label: Text(s['done']),
-              style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(48, 52)),
             ),
           ],
         ),

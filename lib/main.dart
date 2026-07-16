@@ -18,13 +18,21 @@ void main() {
     unawaited(MobileAds.instance.initialize());
   }
   // firebase_options.dart is a placeholder until `flutterfire configure`
-  // runs against a real project — this must never crash startup.
-  unawaited(
-    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
-        .then((app) => AuthService.instance.markAvailable(FirebaseAuth.instance))
-        .catchError((Object e) {
-      if (kDebugMode) debugPrint('Firebase not configured yet: $e');
-    }),
-  );
+  // runs against a real project. On web, initializeApp() with fake values
+  // fails outright (network check), but on native it succeeds locally with
+  // no validation — Google Sign-In would then run for real and fail with a
+  // raw DEVELOPER_ERROR instead of the intended "not configured yet"
+  // messaging. Check the placeholder marker explicitly so both platforms
+  // behave the same until a real project exists.
+  final options = DefaultFirebaseOptions.currentPlatform;
+  if (options.projectId != 'placeholder') {
+    unawaited(
+      Firebase.initializeApp(options: options)
+          .then((app) => AuthService.instance.markAvailable(FirebaseAuth.instance))
+          .catchError((Object e) {
+        if (kDebugMode) debugPrint('Firebase not configured yet: $e');
+      }),
+    );
+  }
   runApp(const QuickSignApp());
 }

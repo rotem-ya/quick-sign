@@ -97,6 +97,9 @@ class S {
       'profileName': 'שם (להערות מהירות)',
       'account': 'חשבון',
       'signInWithGoogle': 'התחברות עם Google',
+      'signInWithApple': 'התחברות עם Apple',
+      'signOut': 'התנתקות',
+      'signInFailed': 'ההתחברות נכשלה',
       'signInComingSoonSub': 'בקרוב — לגיבוי אוטומטי דרך חשבון',
       'signInComingSoonTitle': 'עדיין לא זמין',
       'signInComingSoonBody':
@@ -255,6 +258,9 @@ class S {
       'profileName': 'Name (for quick notes)',
       'account': 'Account',
       'signInWithGoogle': 'Sign in with Google',
+      'signInWithApple': 'Sign in with Apple',
+      'signOut': 'Sign out',
+      'signInFailed': 'Sign-in failed',
       'signInComingSoonSub': 'Coming soon — automatic account backup',
       'signInComingSoonTitle': 'Not available yet',
       'signInComingSoonBody':

@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../models/saved_mark.dart';
+import '../services/auth_service.dart';
 import '../services/default_folder_service.dart';
 import '../services/marks_service.dart';
 import '../services/settings_service.dart';
@@ -44,10 +50,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _folderName;
   bool _loaded = false;
 
+  User? _user;
+  bool _authBusy = false;
+  StreamSubscription<User?>? _authSub;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _user = AuthService.instance.currentUser;
+    _authSub = AuthService.instance.authStateChanges.listen((user) {
+      if (mounted) setState(() => _user = user);
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -86,9 +106,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Honest status instead of a sign-in button that can't actually work yet
-  /// — real Google Sign-In needs an OAuth Client ID only the app's owner can
-  /// create, so this explains exactly what's missing rather than pretending
-  /// to authenticate.
+  /// — shown only while firebase_options.dart is still the placeholder (see
+  /// FIREBASE_AUTH_SETUP.md), so nobody taps a button that silently fails.
   Future<void> _showSignInInfo() async {
     final s = S.of(context);
     await showDialog<void>(
@@ -108,6 +127,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  bool get _appleSignInSupported => !kIsWeb && Platform.isIOS;
+
+  Future<void> _signInWithGoogle() => _runAuthAction(
+    AuthService.instance.signInWithGoogle,
+  );
+
+  Future<void> _signInWithApple() => _runAuthAction(
+    AuthService.instance.signInWithApple,
+  );
+
+  Future<void> _runAuthAction(Future<void> Function() action) async {
+    if (_authBusy) return;
+    setState(() => _authBusy = true);
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) _snack('${S.of(context)['signInFailed']}: $e');
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    if (_authBusy) return;
+    setState(() => _authBusy = true);
+    try {
+      await AuthService.instance.signOut();
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
   }
 
   /// Counts what's actually in the exported bundle right now — shown in the
@@ -334,6 +385,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Widget _buildAccountSection(S s, ColorScheme scheme) {
+    if (!AuthService.instance.isAvailable) {
+      return Card(
+        margin: EdgeInsets.zero,
+        child: ListTile(
+          leading: Icon(
+            Icons.account_circle_outlined,
+            color: scheme.onSurfaceVariant,
+          ),
+          title: Text(s['signInWithGoogle']),
+          subtitle: Text(
+            s['signInComingSoonSub'],
+            style: const TextStyle(fontSize: 13),
+          ),
+          trailing: const Icon(Icons.info_outline, size: 20),
+          onTap: _showSignInInfo,
+        ),
+      );
+    }
+
+    final user = _user;
+    if (user != null) {
+      return Card(
+        margin: EdgeInsets.zero,
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundImage: user.photoURL != null
+                ? NetworkImage(user.photoURL!)
+                : null,
+            child: user.photoURL == null
+                ? const Icon(Icons.person_outline)
+                : null,
+          ),
+          title: Text(user.displayName ?? user.email ?? s['account']),
+          subtitle: user.email != null ? Text(user.email!) : null,
+          trailing: _authBusy
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : TextButton(onPressed: _signOut, child: Text(s['signOut'])),
+        ),
+      );
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              Icons.account_circle_outlined,
+              color: scheme.onSurfaceVariant,
+            ),
+            title: Text(s['signInWithGoogle']),
+            trailing: _authBusy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _authBusy ? null : _signInWithGoogle,
+          ),
+          if (_appleSignInSupported) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.apple, color: scheme.onSurfaceVariant),
+              title: Text(s['signInWithApple']),
+              trailing: _authBusy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _authBusy ? null : _signInWithApple,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
@@ -357,22 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 24),
                 _SectionTitle(s['account'], icon: Icons.shield_outlined),
-                Card(
-                  margin: EdgeInsets.zero,
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.account_circle_outlined,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    title: Text(s['signInWithGoogle']),
-                    subtitle: Text(
-                      s['signInComingSoonSub'],
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    trailing: const Icon(Icons.info_outline, size: 20),
-                    onTap: _showSignInInfo,
-                  ),
-                ),
+                _buildAccountSection(s, scheme),
                 const SizedBox(height: 24),
                 _SectionTitle(s['savedSignatures'], icon: Icons.draw_outlined),
                 for (final mark in _signatures) ...[

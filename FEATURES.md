@@ -345,18 +345,19 @@
 
 ## 🔑 ממתין לבעל המוצר
 
-- 🔑 **התחברות עם Google/Apple + שמירה ב-Firebase** (Firestore/Storage) —
-  ההחלטה: להחליף את הגיבוי הידני (קובץ/תיקייה) ברישום אמיתי דרך חשבון,
-  עם השמירה בפועל ב-Firebase. דורש ממך: (1) OAuth Client ID מ-Google
-  Cloud Console — חינם, כמה דקות, אשמח לפרט בדיוק אילו לחיצות; Apple
-  דורש בנוסף חשבון Apple Developer בתשלום. (2) קובצי הגדרת Firebase
-  (`google-services.json` לאנדרואיד, `GoogleService-Info.plist` ל-iOS,
-  והפעלת Firestore/Storage בקונסולת Firebase — כבר יש פרויקט Firebase
-  ריק שנוצר). לגבי מגבלת הגודל: מסמך ב-Firestore מוגבל ל-1MB בדיוק —
-  מספיק בנוחות לשם + מטא-דאטה של כל החתימות/חותמות, אבל תמונות ה-PNG
-  עצמן (עשרות KB כל אחת) עדיפות ב-Firebase Storage (בלי הגבלת 1MB),
-  לא מוטבעות כ-base64 בתוך מסמך Firestore — כך גם 50+ חתימות/חותמות
-  לא יתקרבו לשום מגבלה.
+- 🔑 **התחברות עם Google/Apple** (Firebase Auth) — **הקוד כבר מוכן ובנוי**:
+  `lib/services/auth_service.dart` (Google + Apple sign-in, כולל עקיפת
+  הבאג הידוע ב-Pigeon codec של `firebase_auth`), מסך ההגדרות כבר מציג
+  כפתורי כניסה אמיתיים במקום "בקרוב" ברגע שיש פרויקט מוגדר, ו-
+  `Firebase.initializeApp` עטוף ב-try/catch כך שהאפליקציה ממשיכה לעבוד
+  רגיל גם בלי הגדרה (מה שקורה כרגע — `lib/firebase_options.dart` הוא
+  placeholder). מה שנשאר, וזה הצעד היחיד שבאמת דורש אותך: ביקור אחד
+  ב-console.firebase.google.com — (1) Authentication → Sign-in method
+  → Google → Enable, (2) Project settings → Service accounts →
+  Generate new private key (JSON) ותשלח לי אותו. מזה אני ממשיך לבד:
+  `flutterfire configure`, רישום Android+iOS, SHA-1 fingerprints, ומחליף
+  את ה-placeholder בקובץ האמיתי — בלי צורך בעוד login. Apple Sign-In
+  דורש בנוסף חשבון Apple Developer בתשלום (נפרד, רק כשתרצה).
 - 🔑 **גישת חשבון מלאה** ל-Drive / OneDrive בתוך האפליקציה — רשימת קבצים,
   ניווט, פתיחה ישירה מהחשבון (לא רק שמירה לתיקייה קבועה). דורש OAuth
   Client ID מ-Google Cloud Console + רישום Azure (OneDrive) — מפתחות

@@ -53,6 +53,19 @@ dependencies:
   printing: ^5.13.0
   intl: ^0.20.2
 
+  # Auth (Google + Apple sign-in)
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.0
+  crypto: ^3.0.0
+
+dependency_overrides:
+  # Newer google_sign_in_ios versions moved to GoogleSignIn 8 / GoogleUtilities
+  # 8, which conflicts with Firebase's GoogleUtilities ~> 7 — pinning avoids a
+  # pod install failure on iOS. See FIREBASE_AUTH_SETUP.md.
+  google_sign_in_ios: 5.7.8
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

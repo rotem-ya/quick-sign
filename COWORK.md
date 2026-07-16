@@ -90,13 +90,22 @@ flutter build web --release --no-web-resources-cdn   # בלי CDN! pdf.js ארו
   ידוע), מסך ההגדרות כבר מציג כפתורי כניסה אמיתיים (`isAvailable`),
   `lib/firebase_options.dart` הוא placeholder מפורש, ו-`Firebase.
   initializeApp` עטוף ב-try/catch כך שהאפליקציה עובדת רגיל גם בלעדיו.
+  **נבדק בפועל על מכשיר גלקסי אמיתי (לא רק web)**: לפני התיקון, אנדרואיד
+  ניסה בפועל להתחבר מול הפרויקט המזויף וקיבל `PlatformException(
+  sign_in_failed, ... ApiException: 10 ...)` — כי `Firebase.
+  initializeApp()` **לא נכשל** מקומית באנדרואיד עם ערכים מזויפים (בניגוד
+  ל-web, ששם יש בדיקת רשת שנכשלת מיד). תוקן ב-`main.dart` עם בדיקה
+  מפורשת של `projectId != 'placeholder'` **לפני** הקריאה ל-
+  `initializeApp` בכלל. אם מוסיפים עוד שדה/מנגנון בדיקת-placeholder,
+  חובה לבדוק גם על מכשיר אמיתי, לא רק בדפדפן — ההתנהגות שונה.
   ר' סעיף 1 למטה למה שבאמת חסר.
 - **מסך "ספריית תיקיות"** (`lib/screens/folder_browser_screen.dart`) —
   בחירת כמה תיקיות שרוצים (SAF באנדרואיד, File System Access API
   ב-web), רשימת קבצים משולבת עם סינון/מיון, פתיחה ישירה למסך העבודה.
-- **תוקן: טקסט על `FilledButton` לא הוצג בכלל בדפדפן** (Flutter 3.44.6
-  + web) — כל האפליקציה עברה ל-`ElevatedButton` בעיצוב שטוח זהה. אם
-  משדרגים גרסת Flutter, כדאי לבדוק אם אפשר לחזור ל-`FilledButton`.
+- **תוקן: טקסט על `FilledButton` לא הוצג בכלל** (Flutter 3.44.6, גם
+  ב-web וגם באנדרואיד נייטיב — נבדק בפועל בשתיהן) — כל האפליקציה עברה
+  ל-`ElevatedButton` בעיצוב שטוח זהה. אם משדרגים גרסת Flutter, כדאי
+  לבדוק אם אפשר לחזור ל-`FilledButton`.
 
 ## משימות שדורשות את המחשב/חשבונות של המשתמש (בשביל זה Cowork)
 

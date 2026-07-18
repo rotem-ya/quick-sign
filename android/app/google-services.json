@@ -1,0 +1,51 @@
+{
+  "project_info": {
+    "project_number": "371519671936",
+    "project_id": "quicksign-7c212",
+    "storage_bucket": "quicksign-7c212.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371519671936:android:cd86b88085bd1d43e52065",
+        "android_client_info": {
+          "package_name": "com.rotem.quicksign"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "371519671936-5fiotae57g9kqqqpme7gkko9c371mrkr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rotem.quicksign",
+            "certificate_hash": "c47e167f20ee34866eda635fb5a5185002e962bb"
+          }
+        },
+        {
+          "client_id": "371519671936-efl8frrhlob7fr1u6l377f2geldbcjk3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbVkfskwoHVaR90ZU-LqDRFM2y2e6MBOY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "371519671936-efl8frrhlob7fr1u6l377f2geldbcjk3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "371519671936-13bofoica47keunebe3ftuvpkor2nrb8.apps.googleusercontent.com",
+              "client_type": 2
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

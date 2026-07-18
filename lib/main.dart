@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -30,7 +29,10 @@ void main() {
       Firebase.initializeApp(options: options)
           .then((app) => AuthService.instance.markAvailable(FirebaseAuth.instance))
           .catchError((Object e) {
-        if (kDebugMode) debugPrint('Firebase not configured yet: $e');
+        // Always logged (not just kDebugMode) — this failing silently with
+        // zero trace is exactly what made a real init failure look
+        // indistinguishable from "never tried" during rollout debugging.
+        debugPrint('Firebase not configured yet: $e');
       }),
     );
   }

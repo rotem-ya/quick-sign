@@ -560,6 +560,16 @@ void main() {
         expect(between.a, 0);
       },
     );
+
+    test('renders 4 lines without error and paints ink', () async {
+      final png = await StampDesignerScreen.renderStamp(
+        lines: const ['שם העסק', 'שורה 2', 'שורה 3', 'שורה 4'],
+        color: const ui.Color(0xFF1B4C9C),
+        shape: StampShape.rectangle,
+        border: StampBorder.single,
+      );
+      expect(await countOpaquePixels(png), greaterThan(0));
+    });
   });
 
   group('HistoryEntry.toJson/fromJson', () {

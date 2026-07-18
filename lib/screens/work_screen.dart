@@ -399,7 +399,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
         pageIndex,
         _signatureWidthFraction,
       ),
-      ToolbarTool.stamp => _markWidthFractionFor(pageIndex, _stampWidthFraction),
+      ToolbarTool.stamp => _markWidthFractionFor(
+        pageIndex,
+        _stampWidthFraction,
+      ),
       ToolbarTool.note => _noteWidthFractionFor(pageIndex),
     };
     final aspect = switch (_armedTool) {
@@ -495,22 +498,40 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
         await _marksService.getDefault(MarkType.signature);
     if (!mounted) return;
 
-    SavedMark chosen;
+    final SavedMark chosen;
     var allPages = false;
     if (defaultMark != null) {
       chosen = defaultMark;
-    } else if (savedSignatures.isEmpty && savedCombos.isEmpty) {
-      await _drawAndPlaceSignature(pageIndex, nx, ny, widthOverride);
-      return;
     } else {
-      final result = await showMarkPickerSheet(
+      // No default set — drawing a signature right here is the primary,
+      // one-tap action; the library (if it has anything) is one button away
+      // instead of being the only option, matching how little friction
+      // placing a stamp already has.
+      final hasSaved = savedSignatures.isNotEmpty || savedCombos.isNotEmpty;
+      final quick = await showQuickSignSheet(
         context,
-        marks: [...savedSignatures, ...savedCombos],
-        showAllPagesOption: session.pageCount > 1,
+        showLibraryButton: hasSaved,
       );
-      if (result == null || !mounted) return;
-      chosen = result.mark;
-      allPages = result.allPages;
+      if (quick == null || !mounted) return;
+      if (quick.useLibrary) {
+        final result = await showMarkPickerSheet(
+          context,
+          marks: [...savedSignatures, ...savedCombos],
+          showAllPagesOption: session.pageCount > 1,
+        );
+        if (result == null || !mounted) return;
+        chosen = result.mark;
+        allPages = result.allPages;
+      } else {
+        await _placeDrawnSignature(
+          pageIndex,
+          nx,
+          ny,
+          widthOverride,
+          quick.bytes!,
+        );
+        return;
+      }
     }
 
     final isCombo = chosen.type == MarkType.combo;
@@ -532,17 +553,15 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     );
   }
 
-  /// No saved signature exists yet — rather than send the user away to
-  /// Settings mid-document, let them draw one right here and place it
-  /// immediately, then offer to keep it in the library for next time.
-  Future<void> _drawAndPlaceSignature(
+  /// Places a signature drawn just now in [showQuickSignSheet], then offers
+  /// to keep it in the library for next time.
+  Future<void> _placeDrawnSignature(
     int pageIndex,
     double nx,
     double ny,
     double? widthOverride,
+    Uint8List bytes,
   ) async {
-    final bytes = await showDrawCanvasSheet(context);
-    if (bytes == null || !mounted) return;
     final placed = await _addImagePlacement(
       type: PlacementType.signature,
       bytes: bytes,
@@ -685,7 +704,10 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(s['noSavedStamps'], style: const TextStyle(fontSize: 16)),
+          content: Text(
+            s['noSavedStamps'],
+            style: const TextStyle(fontSize: 16),
+          ),
           duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: s['settings'],

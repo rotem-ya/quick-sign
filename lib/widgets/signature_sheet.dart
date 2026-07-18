@@ -38,13 +38,42 @@ Future<MarkPickerResult?> showMarkPickerSheet(
 
 /// A minimal drawing-only sheet — used to draw a new signature or redraw an
 /// existing one from the marks library, in Settings only (no chips, no
-/// toggles).
-Future<Uint8List?> showDrawCanvasSheet(BuildContext context) {
-  return showModalBottomSheet<Uint8List>(
+/// toggles, no library button).
+Future<Uint8List?> showDrawCanvasSheet(BuildContext context) async {
+  final result = await showModalBottomSheet<QuickSignResult>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     builder: (context) => const _DrawCanvasSheet(),
+  );
+  return result?.bytes;
+}
+
+/// What [showQuickSignSheet] produced: either freshly drawn bytes, or a
+/// request to switch to the saved-marks library picker instead.
+class QuickSignResult {
+  const QuickSignResult.drawn(this.bytes) : useLibrary = false;
+  const QuickSignResult.useLibrary() : bytes = null, useLibrary = true;
+
+  final Uint8List? bytes;
+  final bool useLibrary;
+}
+
+/// The default way to place a signature with no default mark set: an
+/// immediate drawing pad — one tap and done, no trip to the library. If
+/// saved signatures/combos exist, a button below offers to pick one of
+/// those instead, but drawing is the primary action, not a fallback for an
+/// empty library.
+Future<QuickSignResult?> showQuickSignSheet(
+  BuildContext context, {
+  required bool showLibraryButton,
+}) {
+  return showModalBottomSheet<QuickSignResult>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) =>
+        _DrawCanvasSheet(showLibraryButton: showLibraryButton),
   );
 }
 
@@ -77,10 +106,7 @@ class _MarkPickerSheetState extends State<_MarkPickerSheet> {
           children: [
             Text(
               s['chooseMark'],
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -145,7 +171,9 @@ class _MarkChip extends StatelessWidget {
 }
 
 class _DrawCanvasSheet extends StatefulWidget {
-  const _DrawCanvasSheet();
+  const _DrawCanvasSheet({this.showLibraryButton = false});
+
+  final bool showLibraryButton;
 
   @override
   State<_DrawCanvasSheet> createState() => _DrawCanvasSheetState();
@@ -174,8 +202,11 @@ class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
     }
     final bytes = await _controller.toPngBytes();
     if (bytes == null || !mounted) return;
-    Navigator.of(context).pop(bytes);
+    Navigator.of(context).pop(QuickSignResult.drawn(bytes));
   }
+
+  void _useLibrary() =>
+      Navigator.of(context).pop(const QuickSignResult.useLibrary());
 
   @override
   Widget build(BuildContext context) {
@@ -229,6 +260,14 @@ class _DrawCanvasSheetState extends State<_DrawCanvasSheet> {
                 ),
               ],
             ),
+            if (widget.showLibraryButton) ...[
+              const SizedBox(height: 4),
+              TextButton.icon(
+                onPressed: _useLibrary,
+                icon: const Icon(Icons.badge_outlined, size: 20),
+                label: Text(s['savedSignatures']),
+              ),
+            ],
           ],
         ),
       ),

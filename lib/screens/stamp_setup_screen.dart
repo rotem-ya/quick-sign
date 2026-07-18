@@ -48,10 +48,15 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
     }
   }
 
-  Future<void> _capture({required bool fromCamera}) async {
+  Future<void> _capture({required bool fromCamera}) =>
+      _captureFrom(() => _service.captureImage(fromCamera: fromCamera));
+
+  Future<void> _pickFromFiles() => _captureFrom(_service.pickImageFile);
+
+  Future<void> _captureFrom(Future<Uint8List?> Function() picker) async {
     setState(() => _busy = true);
     try {
-      final raw = await _service.captureImage(fromCamera: fromCamera);
+      final raw = await picker();
       if (raw == null) {
         if (mounted) setState(() => _busy = false);
         return;
@@ -136,8 +141,9 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
         design: _pendingDesign,
       );
     } else {
-      final existingCount = (await _marksService.list(type: MarkType.stamp))
-          .length;
+      final existingCount = (await _marksService.list(
+        type: MarkType.stamp,
+      )).length;
       if (!mounted) return;
       mark = await _marksService.add(
         type: MarkType.stamp,
@@ -151,9 +157,9 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
   }
 
   void _snackError() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(S.of(context)['importError'])),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(S.of(context)['importError'])));
   }
 
   @override
@@ -162,9 +168,11 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.editingMark != null
-            ? s['editStampTitle']
-            : s['stampSetupTitle']),
+        title: Text(
+          widget.editingMark != null
+              ? s['editStampTitle']
+              : s['stampSetupTitle'],
+        ),
       ),
       body: SafeArea(
         child: Padding(
@@ -213,8 +221,7 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
             child: Text(
               s['cropHint'],
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 16, color: scheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 16, color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
@@ -252,9 +259,9 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
               onPressed: _busy
                   ? null
                   : () => setState(() {
-                        _processed = null;
-                        _pendingDesign = null;
-                      }),
+                      _processed = null;
+                      _pendingDesign = null;
+                    }),
               icon: const Icon(Icons.replay),
               label: Text(s['retake']),
               style: OutlinedButton.styleFrom(minimumSize: const Size(48, 56)),
@@ -303,23 +310,30 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
       children: [
         Row(
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : () => _capture(fromCamera: false),
-                icon: const Icon(Icons.photo_library_outlined),
-                label: Text(s['fromGallery']),
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(48, 56)),
+            Tooltip(
+              message: s['captureStamp'],
+              child: OutlinedButton(
+                onPressed: _busy ? null : () => _capture(fromCamera: true),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(56, 56),
+                  maximumSize: const Size(56, 56),
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                  ),
+                ),
+                child: const Icon(Icons.photo_camera_outlined),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              flex: 2,
               child: ElevatedButton.icon(
-                onPressed: _busy ? null : () => _capture(fromCamera: true),
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(s['captureStamp']),
-                style: ElevatedButton.styleFrom(minimumSize: const Size(48, 56)),
+                onPressed: _busy ? null : _pickFromFiles,
+                icon: const Icon(Icons.folder_open_outlined),
+                label: Text(s['fromFiles']),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(48, 56),
+                ),
               ),
             ),
           ],

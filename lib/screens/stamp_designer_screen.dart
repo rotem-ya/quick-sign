@@ -8,7 +8,7 @@ import '../models/stamp_design.dart';
 import '../theme/design_tokens.dart';
 import '../widgets/transparency_checkerboard.dart';
 
-/// Built-in digital stamp designer: a classic editable template — up to three
+/// Built-in digital stamp designer: a classic editable template — up to four
 /// text lines, an optional border (none / single / double), in traditional
 /// stamp ink colors.
 ///
@@ -38,7 +38,13 @@ class StampDesignerScreen extends StatefulWidget {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     _StampDesignerScreenState._paintStamp(
-        canvas, const Size(width, height), lines, color, shape, border);
+      canvas,
+      const Size(width, height),
+      lines,
+      color,
+      shape,
+      border,
+    );
     final picture = recorder.endRecording();
     final image = await picture.toImage(width.toInt(), height.toInt());
     picture.dispose();
@@ -60,6 +66,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
   final _line1 = TextEditingController();
   final _line2 = TextEditingController();
   final _line3 = TextEditingController();
+  final _line4 = TextEditingController();
 
   static const _inkColors = <Color>[
     Color(0xFF1B4C9C), // classic blue
@@ -81,6 +88,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
       if (lines.isNotEmpty) _line1.text = lines[0];
       if (lines.length > 1) _line2.text = lines[1];
       if (lines.length > 2) _line3.text = lines[2];
+      if (lines.length > 3) _line4.text = lines[3];
       _color = Color(initial.colorValue);
       _shape = initial.shape;
       _border = initial.border;
@@ -92,13 +100,14 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
     _line1.dispose();
     _line2.dispose();
     _line3.dispose();
+    _line4.dispose();
     super.dispose();
   }
 
   List<String> get _lines => [
-        for (final c in [_line1, _line2, _line3])
-          if (c.text.trim().isNotEmpty) c.text.trim(),
-      ];
+    for (final c in [_line1, _line2, _line3, _line4])
+      if (c.text.trim().isNotEmpty) c.text.trim(),
+  ];
 
   Future<void> _save() async {
     final lines = _lines;
@@ -109,15 +118,17 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
       border: _border,
     );
     if (!mounted) return;
-    Navigator.of(context).pop(StampDesignResult(
-      bytes: bytes,
-      design: StampDesign(
-        lines: lines,
-        colorValue: _color.toARGB32(),
-        shape: _shape,
-        border: _border,
+    Navigator.of(context).pop(
+      StampDesignResult(
+        bytes: bytes,
+        design: StampDesign(
+          lines: lines,
+          colorValue: _color.toARGB32(),
+          shape: _shape,
+          border: _border,
+        ),
       ),
-    ));
+    );
   }
 
   static void _paintStamp(
@@ -147,8 +158,9 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
     // Text still lays out inside where the inner border would sit, whether
     // or not it's actually drawn, so the layout stays stable across border
     // styles as the user switches between them.
-    final textBounds =
-        border == StampBorder.none ? outer.deflate(size.height * 0.04) : inner;
+    final textBounds = border == StampBorder.none
+        ? outer.deflate(size.height * 0.04)
+        : inner;
 
     if (border != StampBorder.none) {
       switch (shape) {
@@ -157,8 +169,9 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
           canvas.drawRRect(RRect.fromRectAndRadius(outer, r), stroke);
           if (border == StampBorder.double_) {
             canvas.drawRRect(
-                RRect.fromRectAndRadius(inner, Radius.circular(r.x * 0.8)),
-                thin);
+              RRect.fromRectAndRadius(inner, Radius.circular(r.x * 0.8)),
+              thin,
+            );
           }
         case StampShape.ellipse:
           canvas.drawOval(outer, stroke);
@@ -169,32 +182,37 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
     }
 
     if (lines.isEmpty) return;
-    // First line is the headline — bigger and bold.
+    // First line is the headline — bigger and bold. More lines need
+    // proportionally smaller text to all fit within the same stamp height.
     final sizes = switch (lines.length) {
       1 => [0.30],
       2 => [0.24, 0.16],
-      _ => [0.20, 0.13, 0.13],
+      3 => [0.20, 0.13, 0.13],
+      _ => [0.17, 0.11, 0.11, 0.11],
     };
     final painters = <TextPainter>[];
     for (var i = 0; i < lines.length; i++) {
-      painters.add(TextPainter(
-        text: TextSpan(
-          text: lines[i],
-          style: TextStyle(
-            fontFamily: 'Heebo',
-            fontSize: size.height * sizes[i],
-            fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w500,
-            color: color,
+      painters.add(
+        TextPainter(
+          text: TextSpan(
+            text: lines[i],
+            style: TextStyle(
+              fontFamily: 'Heebo',
+              fontSize: size.height * sizes[i],
+              fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w500,
+              color: color,
+            ),
           ),
-        ),
-        textDirection: TextDirection.rtl,
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        ellipsis: '…',
-      )..layout(maxWidth: textBounds.width * 0.86));
+          textDirection: TextDirection.rtl,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          ellipsis: '…',
+        )..layout(maxWidth: textBounds.width * 0.86),
+      );
     }
     const gapFactor = 0.035;
-    final totalHeight = painters.fold<double>(0, (sum, p) => sum + p.height) +
+    final totalHeight =
+        painters.fold<double>(0, (sum, p) => sum + p.height) +
         (painters.length - 1) * size.height * gapFactor;
     var y = size.height / 2 - totalHeight / 2;
     for (final painter in painters) {
@@ -240,37 +258,41 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
             const SizedBox(height: 18),
             TextField(
               controller: _line1,
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(
-                labelText: s['businessName'],
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(labelText: s['businessName']),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _line2,
               style: const TextStyle(fontSize: 17),
-              decoration: InputDecoration(
-                labelText: s['line2'],
-              ),
+              decoration: InputDecoration(labelText: s['line2']),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _line3,
               style: const TextStyle(fontSize: 17),
-              decoration: InputDecoration(
-                labelText: s['line3'],
-              ),
+              decoration: InputDecoration(labelText: s['line3']),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _line4,
+              style: const TextStyle(fontSize: 17),
+              decoration: InputDecoration(labelText: s['line4']),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 18),
             Row(
               children: [
-                Text('${s['color']}:',
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(
+                  '${s['color']}:',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(width: 10),
                 for (final color in _inkColors)
                   Padding(
@@ -292,8 +314,11 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
                           ),
                         ),
                         child: _color == color
-                            ? const Icon(Icons.check,
-                                color: Colors.white, size: 20)
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 20,
+                              )
                             : null,
                       ),
                     ),
@@ -301,9 +326,10 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            Text('${s['borderStyle']}:',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600)),
+            Text(
+              '${s['borderStyle']}:',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
             SegmentedButton<StampBorder>(
               segments: [
@@ -330,9 +356,13 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
               const SizedBox(height: 14),
               Row(
                 children: [
-                  Text('${s['shape']}:',
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text(
+                    '${s['shape']}:',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   SegmentedButton<StampShape>(
                     segments: [
@@ -348,8 +378,7 @@ class _StampDesignerScreenState extends State<StampDesignerScreen> {
                       ),
                     ],
                     selected: {_shape},
-                    onSelectionChanged: (v) =>
-                        setState(() => _shape = v.first),
+                    onSelectionChanged: (v) => setState(() => _shape = v.first),
                   ),
                 ],
               ),
@@ -393,7 +422,13 @@ class _StampPreviewPainter extends CustomPainter {
     canvas.save();
     canvas.translate((size.width - w) / 2, (size.height - h) / 2);
     _StampDesignerScreenState._paintStamp(
-        canvas, Size(w, h), lines, color, shape, border);
+      canvas,
+      Size(w, h),
+      lines,
+      color,
+      shape,
+      border,
+    );
     canvas.restore();
   }
 

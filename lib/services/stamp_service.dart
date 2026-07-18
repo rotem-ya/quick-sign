@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -54,6 +55,18 @@ class StampService {
     );
     if (file == null) return null;
     return file.readAsBytes();
+  }
+
+  /// Picks an image via the system document picker instead of the Photos
+  /// gallery — this reaches any provider registered with the OS (Drive,
+  /// OneDrive, Files), not just the local camera roll.
+  Future<Uint8List?> pickImageFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    return result?.files.single.bytes;
   }
 
   /// Pure processing step: page background → transparent, then crop to the

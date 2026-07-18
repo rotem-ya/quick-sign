@@ -10,18 +10,24 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 /// Wraps Firebase Auth (Google + Apple sign-in). Safe to use even before a
 /// real Firebase project is configured — [isAvailable] is false until
 /// `flutterfire configure` replaces the placeholder in firebase_options.dart
-/// and [AuthService.init] is called successfully from main().
+/// and [markAvailable] is called from main(). main() calls it from an
+/// unawaited Future, so it can flip true well after the first frame — UI
+/// that cares must watch [availableNotifier] rather than read [isAvailable]
+/// only once at build time, or it can get stuck showing "not available yet"
+/// forever even after Firebase finishes initializing.
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
 
   bool isAvailable = false;
+  final ValueNotifier<bool> availableNotifier = ValueNotifier<bool>(false);
   FirebaseAuth? _auth;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   void markAvailable(FirebaseAuth auth) {
     _auth = auth;
     isAvailable = true;
+    availableNotifier.value = true;
   }
 
   User? get currentUser => _auth?.currentUser;

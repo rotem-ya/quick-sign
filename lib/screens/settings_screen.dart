@@ -59,15 +59,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _load();
     _user = AuthService.instance.currentUser;
-    _authSub = AuthService.instance.authStateChanges.listen((user) {
-      if (mounted) setState(() => _user = user);
-    });
+    _subscribeToAuthState();
+    AuthService.instance.availableNotifier.addListener(_onAuthAvailable);
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
+    AuthService.instance.availableNotifier.removeListener(_onAuthAvailable);
     super.dispose();
+  }
+
+  // Firebase.initializeApp() in main() completes asynchronously, often after
+  // this screen's first build — re-subscribe once it's actually ready so the
+  // "not available yet" card doesn't get stuck showing forever (the stream
+  // we subscribed to in initState was Stream.empty() until now).
+  void _onAuthAvailable() {
+    if (!mounted) return;
+    _authSub?.cancel();
+    _subscribeToAuthState();
+    setState(() => _user = AuthService.instance.currentUser);
+  }
+
+  void _subscribeToAuthState() {
+    _authSub = AuthService.instance.authStateChanges.listen((user) {
+      if (mounted) setState(() => _user = user);
+    });
   }
 
   Future<void> _load() async {

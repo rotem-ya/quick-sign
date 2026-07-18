@@ -189,9 +189,17 @@
 - ✅ **אישור חזותי במספרים**: שמירה/שחזור של גיבוי מציגים כמה פריטים
   בפועל נשמרו/נוספו ("הגיבוי נשמר — 3 פריטים"), לא רק "בוצע בהצלחה" גנרי
   שנראה אותו דבר גם כשלא קרה כלום
-- ✅ **סעיף "חשבון" גלוי** במסך ההגדרות (מיד אחרי הפרופיל): "התחברות עם
-  Google" מציג בבירור שזה עדיין לא זמין ומסביר בדיוק מה חסר (מפתח OAuth
-  שרק בעל המוצר יכול ליצור) — לא כפתור שנראה שעובד אבל בפועל לא
+- ✅ **התחברות עם Google — עובד בפועל ב-web**: פרויקט Firebase אמיתי
+  (`quicksign-7c212`) מוגדר, ואומת ע"י המשתמש בדפדפן האמיתי שלו —
+  ההתחברות מצליחה בפועל, לא רק "לא קורס". תוקנו תוך כדי שני באגים
+  אמיתיים: (1) מסך ההגדרות היה יכול להיתקע בהצגת "עדיין לא זמין" גם
+  אחרי ש-Firebase כבר התאתחל בהצלחה, כי `AuthService.isAvailable` היה
+  `bool` רגיל בלי שום מנגנון עדכון — נבדק ב-`build()` פעם אחת, ולא
+  התעדכן אם ה-init האסינכרוני הסתיים אחרי הבנייה הראשונה. תוקן עם
+  `ValueNotifier<bool>` שהמסך מאזין לו. (2) שגיאות אתחול Firebase נבלעו
+  בשקט ב-release build (`if (kDebugMode) debugPrint(...)`) — עכשיו
+  תמיד נרשמות ל-console, מה שהיה חיוני כדי לאבחן את הבאג הראשון מלכתחילה.
+- ✅ **סעיף "חשבון" גלוי** במסך ההגדרות (מיד אחרי הפרופיל)
 
 ### עיצוב ונגישות
 - ✅ Material 3 + מצב כהה, גופן Heebo אחיד, אייקון אפליקציה
@@ -380,19 +388,18 @@
 
 ## 🔑 ממתין לבעל המוצר
 
-- 🔑 **התחברות עם Google/Apple** (Firebase Auth) — **הקוד כבר מוכן ובנוי**:
-  `lib/services/auth_service.dart` (Google + Apple sign-in, כולל עקיפת
-  הבאג הידוע ב-Pigeon codec של `firebase_auth`), מסך ההגדרות כבר מציג
-  כפתורי כניסה אמיתיים במקום "בקרוב" ברגע שיש פרויקט מוגדר, ו-
-  `Firebase.initializeApp` עטוף ב-try/catch כך שהאפליקציה ממשיכה לעבוד
-  רגיל גם בלי הגדרה (מה שקורה כרגע — `lib/firebase_options.dart` הוא
-  placeholder). מה שנשאר, וזה הצעד היחיד שבאמת דורש אותך: ביקור אחד
-  ב-console.firebase.google.com — (1) Authentication → Sign-in method
-  → Google → Enable, (2) Project settings → Service accounts →
-  Generate new private key (JSON) ותשלח לי אותו. מזה אני ממשיך לבד:
-  `flutterfire configure`, רישום Android+iOS, SHA-1 fingerprints, ומחליף
-  את ה-placeholder בקובץ האמיתי — בלי צורך בעוד login. Apple Sign-In
-  דורש בנוסף חשבון Apple Developer בתשלום (נפרד, רק כשתרצה).
+- 🔑 **התחברות עם Google/Apple (Firebase Auth) — כמעט גמור**: פרויקט
+  Firebase אמיתי (`quicksign-7c212`), קבצי config, `flutterfire configure`,
+  ו-**Google עובד ומאומת ב-web**. נשאר:
+  - **Android**: SHA-1 fingerprint לא רשום ב-Firebase Console עדיין —
+    זו הסיבה שהתחברות באנדרואיד נכשלת עם `ApiException: 10`. ה-SHA-1
+    של מפתח ה-debug נמסר; חסר גם ה-SHA-1 של ה-upload keystore (קבוע
+    יותר, קיים כבר מסבב 16, נשלח בנפרד לא בגיט) — שניהם צריכים
+    Add fingerprint באותו מקום ב-Console.
+  - **Apple**: capability הופעל ב-Apple Developer Portal, וה-entitlement
+    חובר בקוד (`ios/Runner/Runner.entitlements` + `project.pbxproj`) —
+    בלי Xcode בפועל, כי אין Mac בסביבה. **לא נבדק בפועל** — זה דורש
+    build אמיתי ל-iOS (Mac או Codemagic, ר' סעיף הבא), עדיין לא בוצע.
 - 🔑 **גישת חשבון מלאה** ל-Drive / OneDrive בתוך האפליקציה — רשימת קבצים,
   ניווט, פתיחה ישירה מהחשבון (לא רק שמירה לתיקייה קבועה). דורש OAuth
   Client ID מ-Google Cloud Console + רישום Azure (OneDrive) — מפתחות

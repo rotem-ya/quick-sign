@@ -26,6 +26,16 @@ class StampCropRequest {
   final double left, top, right, bottom;
 }
 
+/// A file the user picked via [StampService.pickImageOrPdfFile] — the
+/// caller branches on [isPdf] to decide whether it needs page rendering
+/// before it can be cropped.
+class PickedStampSource {
+  const PickedStampSource({required this.bytes, required this.isPdf});
+
+  final Uint8List bytes;
+  final bool isPdf;
+}
+
 /// Captures, processes and stores the user's stamp — plus the last drawn
 /// signature — so both can be placed with a single tap.
 ///
@@ -57,16 +67,22 @@ class StampService {
     return file.readAsBytes();
   }
 
-  /// Picks an image via the system document picker instead of the Photos
-  /// gallery — this reaches any provider registered with the OS (Drive,
-  /// OneDrive, Files), not just the local camera roll.
-  Future<Uint8List?> pickImageFile() async {
+  /// Picks an image OR a PDF via the system document picker instead of the
+  /// Photos gallery — this reaches any provider registered with the OS
+  /// (Drive, OneDrive, Files), not just the local camera roll. A PDF result
+  /// still needs page rendering + cropping (see StampFromPageScreen) before
+  /// it's usable as a stamp; an image result is ready to crop directly.
+  Future<PickedStampSource?> pickImageOrPdfFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['jpg', 'jpeg', 'png'],
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
       withData: true,
     );
-    return result?.files.single.bytes;
+    final file = result?.files.single;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return null;
+    final isPdf = (file.extension ?? '').toLowerCase() == 'pdf';
+    return PickedStampSource(bytes: bytes, isPdf: isPdf);
   }
 
   /// Pure processing step: page background → transparent, then crop to the

@@ -52,6 +52,8 @@ import 'folder_browser_screen.dart';
 import 'history_screen.dart';
 import 'page_manager_screen.dart';
 import 'settings_screen.dart';
+import 'stamp_from_page_screen.dart';
+import 'stamp_setup_screen.dart';
 
 /// The single work screen: zoomable document pages, placement overlays,
 /// bottom toolbar with the ad banner underneath.
@@ -811,6 +813,29 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     setState(() => _session = newSession);
   }
 
+  /// Pulls a stamp straight out of the document currently open — useful for
+  /// a document that already has a real stamped/signed example on one of
+  /// its pages, instead of only preparing a fresh stamp in Settings.
+  Future<void> _createStampFromDocument() async {
+    final session = _session;
+    if (session == null || _busy) return;
+    final processed = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(
+        builder: (_) => StampFromPageScreen(
+          pageCount: session.pageCount,
+          initialPageIndex: _currentPageNotifier.value,
+          pageBytesLoader: _renderService.renderPage,
+        ),
+      ),
+    );
+    if (processed == null || !mounted) return;
+    await Navigator.of(context).push<SavedMark>(
+      MaterialPageRoute(
+        builder: (_) => StampSetupScreen(initialProcessedBytes: processed),
+      ),
+    );
+  }
+
   // ── Zoom ──────────────────────────────────────────────────────────────────
 
   void _zoomBy(double factor) {
@@ -1081,6 +1106,12 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                         icon: Icons.post_add_outlined,
                         tooltip: s['managePages'],
                         onTap: _busy ? null : _managePages,
+                      ),
+                    if (session != null)
+                      _HeaderIconButton(
+                        icon: Icons.crop_outlined,
+                        tooltip: s['stampFromDocument'],
+                        onTap: _busy ? null : _createStampFromDocument,
                       ),
                     if (session != null)
                       _HeaderIconButton(

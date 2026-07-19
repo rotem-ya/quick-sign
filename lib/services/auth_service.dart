@@ -46,6 +46,25 @@ class AuthService {
     auth.authStateChanges().listen((user) {
       _log('authStateChanges -> ${user?.uid ?? "signed out"}');
     });
+    // If this is a slow restore rather than a genuinely lost session, a
+    // later check should show a different (non-null) result than the
+    // immediate one above.
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      _log('currentUser +3s = ${auth.currentUser?.uid ?? "none"}');
+    });
+    Future<void>.delayed(const Duration(seconds: 8), () {
+      _log('currentUser +8s = ${auth.currentUser?.uid ?? "none"}');
+    });
+    // Checks whether Google's own layer (independent of Firebase) still
+    // remembers the account — narrows down which layer is dropping it.
+    _googleSignIn
+        .signInSilently()
+        .then((account) {
+          _log('googleSignIn.signInSilently -> ${account?.email ?? "none"}');
+        })
+        .catchError((Object e) {
+          _log('googleSignIn.signInSilently failed: $e');
+        });
   }
 
   User? get currentUser => _auth?.currentUser;

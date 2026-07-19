@@ -43,7 +43,9 @@ class CloudSyncService {
   void start() {
     if (_started) return;
     _started = true;
+    debugPrint('CloudSync: started, watching sign-in + mark changes');
     AuthService.instance.authStateChanges.listen((user) {
+      debugPrint('CloudSync: authStateChanges -> ${user?.uid ?? "signed out"}');
       if (user != null) unawaited(_onSignedIn(user));
     });
     _revisionListener = () {
@@ -62,6 +64,7 @@ class CloudSyncService {
           .collection('users')
           .doc(user.uid)
           .get();
+      debugPrint('CloudSync: sign-in check ok, cloud doc exists=${doc.exists}');
       // A cloud backup already exists for this account — pull what's not
       // already on this device. Otherwise this is either a brand new
       // account or the first device to ever sign in — push what's here.
@@ -71,13 +74,20 @@ class CloudSyncService {
         await _push();
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Cloud sync sign-in check failed: $e');
+      // Always logged (not just kDebugMode) — this is exactly the kind of
+      // failure (rules not deployed, Firestore/Storage not enabled yet)
+      // that needs to be visible to diagnose remotely, since it otherwise
+      // fails completely silently by design.
+      debugPrint('CloudSync: sign-in check failed: $e');
     }
   }
 
   Future<void> _push() async {
     final user = AuthService.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      debugPrint('CloudSync: push skipped, not signed in');
+      return;
+    }
     try {
       final marks = await _marksService.list();
       final name = await _settingsService.getName();
@@ -109,8 +119,9 @@ class CloudSyncService {
             .ref('users/${user.uid}/marks/${mark.id}.png')
             .putData(mark.imageBytes);
       }
+      debugPrint('CloudSync: pushed ${marks.length} mark(s) + profile');
     } catch (e) {
-      if (kDebugMode) debugPrint('Cloud push failed: $e');
+      debugPrint('CloudSync: push failed: $e');
     }
   }
 
@@ -138,7 +149,12 @@ class CloudSyncService {
           .doc(uid)
           .collection('marks')
           .get();
+      debugPrint(
+        'CloudSync: pull found ${marksSnapshot.docs.length} cloud mark(s), '
+        '${localIds.length} already local',
+      );
       final storage = FirebaseStorage.instance;
+      var restored = 0;
       for (final doc in marksSnapshot.docs) {
         if (localIds.contains(doc.id)) continue; // already on this device
         try {
@@ -160,11 +176,13 @@ class CloudSyncService {
                   : StampDesign.fromJson(designJson),
             ),
           );
+          restored++;
         } catch (e) {
           // One malformed cloud mark shouldn't stop the rest from restoring.
-          if (kDebugMode) debugPrint('Skipping cloud mark ${doc.id}: $e');
+          debugPrint('CloudSync: skipping cloud mark ${doc.id}: $e');
         }
       }
+      debugPrint('CloudSync: pull restored $restored mark(s)');
 
       final cloudDefaults =
           (data['defaults'] as Map<String, dynamic>?) ?? const {};
@@ -175,11 +193,11 @@ class CloudSyncService {
             await _marksService.setDefault(type, entry.value as String);
           }
         } catch (e) {
-          if (kDebugMode) debugPrint('Skipping cloud default $entry: $e');
+          debugPrint('CloudSync: skipping cloud default $entry: $e');
         }
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Cloud pull failed: $e');
+      debugPrint('CloudSync: pull failed: $e');
     }
   }
 }

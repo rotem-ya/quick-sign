@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -39,32 +40,46 @@ class AuthService {
     _auth = auth;
     isAvailable = true;
     availableNotifier.value = true;
-    // Diagnostic: Firebase Auth persists sign-in natively, so currentUser
-    // should already reflect a previous session right after init — logged
-    // to help diagnose reports of sign-in not surviving an app restart.
     _log('available, currentUser=${auth.currentUser?.uid ?? "none"}');
     auth.authStateChanges().listen((user) {
       _log('authStateChanges -> ${user?.uid ?? "signed out"}');
     });
-    // If this is a slow restore rather than a genuinely lost session, a
-    // later check should show a different (non-null) result than the
-    // immediate one above.
-    Future<void>.delayed(const Duration(seconds: 3), () {
-      _log('currentUser +3s = ${auth.currentUser?.uid ?? "none"}');
-    });
-    Future<void>.delayed(const Duration(seconds: 8), () {
-      _log('currentUser +8s = ${auth.currentUser?.uid ?? "none"}');
-    });
-    // Checks whether Google's own layer (independent of Firebase) still
-    // remembers the account — narrows down which layer is dropping it.
-    _googleSignIn
-        .signInSilently()
-        .then((account) {
-          _log('googleSignIn.signInSilently -> ${account?.email ?? "none"}');
-        })
-        .catchError((Object e) {
-          _log('googleSignIn.signInSilently failed: $e');
-        });
+    // On this device, Firebase's own local session does not survive an app
+    // restart even though Google's own layer still remembers the account
+    // (confirmed live: signInSilently succeeds while currentUser stays null
+    // for 8+ seconds afterward) — so on native, if there's no Firebase
+    // session yet, silently try to recover one from Google's still-valid
+    // account instead of relying on Firebase's native persistence alone.
+    if (!kIsWeb && auth.currentUser == null) {
+      unawaited(_restoreFromGoogle(auth));
+    }
+  }
+
+  Future<void> _restoreFromGoogle(FirebaseAuth auth) async {
+    try {
+      final account = await _googleSignIn.signInSilently();
+      if (account == null) {
+        _log('startup restore: no silent Google account');
+        return;
+      }
+      _log('startup restore: found ${account.email}, signing back in');
+      await _completeFirebaseSignIn(auth, account);
+    } catch (e) {
+      _log('startup restore failed: $e');
+    }
+  }
+
+  Future<User?> _completeFirebaseSignIn(
+    FirebaseAuth auth,
+    GoogleSignInAccount account,
+  ) async {
+    final googleAuth = await account.authentication;
+    final credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+      accessToken: googleAuth.accessToken,
+    );
+    final userCredential = await auth.signInWithCredential(credential);
+    return userCredential.user;
   }
 
   User? get currentUser => _auth?.currentUser;
@@ -102,13 +117,7 @@ class AuthService {
     if (googleUser == null) return null; // user dismissed the picker
 
     try {
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-        accessToken: googleAuth.accessToken,
-      );
-      final userCredential = await auth.signInWithCredential(credential);
-      return userCredential.user;
+      return await _completeFirebaseSignIn(auth, googleUser);
     } catch (e) {
       if (_isPigeonCastError(e)) return _recoverFromSignInError();
       rethrow;

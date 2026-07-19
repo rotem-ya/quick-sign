@@ -28,6 +28,17 @@ class AuthService {
     _auth = auth;
     isAvailable = true;
     availableNotifier.value = true;
+    // Diagnostic: Firebase Auth persists sign-in natively, so currentUser
+    // should already reflect a previous session right after init — logged
+    // to help diagnose reports of sign-in not surviving an app restart.
+    debugPrint(
+      'AuthService: available, currentUser=${auth.currentUser?.uid ?? "none"}',
+    );
+    auth.authStateChanges().listen((user) {
+      debugPrint(
+        'AuthService: authStateChanges -> ${user?.uid ?? "signed out"}',
+      );
+    });
   }
 
   User? get currentUser => _auth?.currentUser;
@@ -42,6 +53,25 @@ class AuthService {
   Future<User?> signInWithGoogle() async {
     final auth = _auth;
     if (auth == null) return null;
+
+    if (kIsWeb) {
+      // Firebase's own OAuth popup — needs zero extra configuration beyond
+      // enabling Google in the console. The google_sign_in package's web
+      // implementation requires a *separate* OAuth "Web client ID" that
+      // isn't configured anywhere in this app (Android/iOS get theirs
+      // automatically from google-services.json/GoogleService-Info.plist;
+      // web has no equivalent file) and its imperative signIn() call has
+      // been unreliable on top of Google Identity Services — both are
+      // avoided entirely by going through FirebaseAuth directly on web.
+      try {
+        final userCredential = await auth.signInWithPopup(GoogleAuthProvider());
+        return userCredential.user;
+      } catch (e) {
+        if (_isPigeonCastError(e)) return _recoverFromSignInError();
+        rethrow;
+      }
+    }
+
     final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) return null; // user dismissed the picker
 
@@ -120,7 +150,7 @@ class AuthService {
           .first
           .timeout(const Duration(seconds: 3));
     } catch (e) {
-      if (kDebugMode) debugPrint('Auth recovery failed: $e');
+      debugPrint('AuthService: recovery failed: $e');
       return null;
     }
   }

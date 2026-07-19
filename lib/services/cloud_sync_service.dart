@@ -36,6 +36,12 @@ class CloudSyncService {
   Timer? _debounce;
   bool _started = false;
 
+  /// Logs both to the console and to the on-device diagnostics panel in
+  /// Settings (via [AuthService]), so a failing sync — the single most
+  /// common being Firestore/Storage not yet enabled in the Firebase console,
+  /// or rules not deployed — is actually visible on the test device.
+  void _log(String line) => AuthService.instance.log(line);
+
   /// Call once, after Firebase finishes initializing. Safe to call more than
   /// once — only the first call does anything. Runs for the app's whole
   /// lifetime (this is a singleton), so the auth subscription is never
@@ -43,9 +49,9 @@ class CloudSyncService {
   void start() {
     if (_started) return;
     _started = true;
-    debugPrint('CloudSync: started, watching sign-in + mark changes');
+    _log('CloudSync: started, watching sign-in + mark changes');
     AuthService.instance.authStateChanges.listen((user) {
-      debugPrint('CloudSync: authStateChanges -> ${user?.uid ?? "signed out"}');
+      _log('CloudSync: authStateChanges -> ${user?.uid ?? "signed out"}');
       if (user != null) unawaited(_onSignedIn(user));
     });
     _revisionListener = () {
@@ -64,28 +70,30 @@ class CloudSyncService {
           .collection('users')
           .doc(user.uid)
           .get();
-      debugPrint('CloudSync: sign-in check ok, cloud doc exists=${doc.exists}');
-      // A cloud backup already exists for this account — pull what's not
-      // already on this device. Otherwise this is either a brand new
-      // account or the first device to ever sign in — push what's here.
+      _log('CloudSync: sign-in check ok, cloud doc exists=${doc.exists}');
+      // Two-way merge on sign-in. First pull what the account already has
+      // that isn't on this device, then always push — so signatures created
+      // on THIS device (while signed out, or before the account had any
+      // backup) are uploaded too, not silently left local-only. Both are
+      // union merges (nothing is deleted on either side), so the order is
+      // safe and the result converges to the union of both.
       if (doc.exists) {
         await _pull(user.uid);
-      } else {
-        await _push();
       }
+      await _push();
     } catch (e) {
       // Always logged (not just kDebugMode) — this is exactly the kind of
       // failure (rules not deployed, Firestore/Storage not enabled yet)
       // that needs to be visible to diagnose remotely, since it otherwise
       // fails completely silently by design.
-      debugPrint('CloudSync: sign-in check failed: $e');
+      _log('CloudSync: sign-in check failed: $e');
     }
   }
 
   Future<void> _push() async {
     final user = AuthService.instance.currentUser;
     if (user == null) {
-      debugPrint('CloudSync: push skipped, not signed in');
+      _log('CloudSync: push skipped, not signed in');
       return;
     }
     try {
@@ -119,9 +127,9 @@ class CloudSyncService {
             .ref('users/${user.uid}/marks/${mark.id}.png')
             .putData(mark.imageBytes);
       }
-      debugPrint('CloudSync: pushed ${marks.length} mark(s) + profile');
+      _log('CloudSync: pushed ${marks.length} mark(s) + profile');
     } catch (e) {
-      debugPrint('CloudSync: push failed: $e');
+      _log('CloudSync: push failed: $e');
     }
   }
 
@@ -149,7 +157,7 @@ class CloudSyncService {
           .doc(uid)
           .collection('marks')
           .get();
-      debugPrint(
+      _log(
         'CloudSync: pull found ${marksSnapshot.docs.length} cloud mark(s), '
         '${localIds.length} already local',
       );
@@ -179,10 +187,10 @@ class CloudSyncService {
           restored++;
         } catch (e) {
           // One malformed cloud mark shouldn't stop the rest from restoring.
-          debugPrint('CloudSync: skipping cloud mark ${doc.id}: $e');
+          _log('CloudSync: skipping cloud mark ${doc.id}: $e');
         }
       }
-      debugPrint('CloudSync: pull restored $restored mark(s)');
+      _log('CloudSync: pull restored $restored mark(s)');
 
       final cloudDefaults =
           (data['defaults'] as Map<String, dynamic>?) ?? const {};
@@ -193,11 +201,11 @@ class CloudSyncService {
             await _marksService.setDefault(type, entry.value as String);
           }
         } catch (e) {
-          debugPrint('CloudSync: skipping cloud default $entry: $e');
+          _log('CloudSync: skipping cloud default $entry: $e');
         }
       }
     } catch (e) {
-      debugPrint('CloudSync: pull failed: $e');
+      _log('CloudSync: pull failed: $e');
     }
   }
 }

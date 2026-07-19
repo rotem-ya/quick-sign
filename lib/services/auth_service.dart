@@ -36,6 +36,11 @@ class AuthService {
     debugLog.value = [...debugLog.value, '$stamp $line'];
   }
 
+  /// Lets sibling services (e.g. [CloudSyncService]) surface their own
+  /// diagnostics in the same on-device log shown in Settings, so cloud-sync
+  /// failures are visible on the test device without adb/DevTools.
+  void log(String line) => _log(line);
+
   void markAvailable(FirebaseAuth auth) {
     _auth = auth;
     isAvailable = true;

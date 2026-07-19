@@ -8,6 +8,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'app.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
+import 'services/cloud_sync_service.dart';
 import 'widgets/ad_banner.dart';
 
 void main() {
@@ -27,13 +28,16 @@ void main() {
   if (options.projectId != 'placeholder') {
     unawaited(
       Firebase.initializeApp(options: options)
-          .then((app) => AuthService.instance.markAvailable(FirebaseAuth.instance))
+          .then((app) {
+            AuthService.instance.markAvailable(FirebaseAuth.instance);
+            CloudSyncService.instance.start();
+          })
           .catchError((Object e) {
-        // Always logged (not just kDebugMode) — this failing silently with
-        // zero trace is exactly what made a real init failure look
-        // indistinguishable from "never tried" during rollout debugging.
-        debugPrint('Firebase not configured yet: $e');
-      }),
+            // Always logged (not just kDebugMode) — this failing silently with
+            // zero trace is exactly what made a real init failure look
+            // indistinguishable from "never tried" during rollout debugging.
+            debugPrint('Firebase not configured yet: $e');
+          }),
     );
   }
   runApp(const QuickSignApp());

@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Cloud sync mark images (see lib/services/cloud_sync_service.dart) —
+    // each user can only read/write their own folder.
+    match /users/{userId}/marks/{markId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

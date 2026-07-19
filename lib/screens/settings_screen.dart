@@ -148,13 +148,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool get _appleSignInSupported => !kIsWeb && Platform.isIOS;
 
-  Future<void> _signInWithGoogle() => _runAuthAction(
-    AuthService.instance.signInWithGoogle,
-  );
+  Future<void> _signInWithGoogle() =>
+      _runAuthAction(AuthService.instance.signInWithGoogle);
 
-  Future<void> _signInWithApple() => _runAuthAction(
-    AuthService.instance.signInWithApple,
-  );
+  Future<void> _signInWithApple() =>
+      _runAuthAction(AuthService.instance.signInWithApple);
 
   Future<void> _runAuthAction(Future<void> Function() action) async {
     if (_authBusy) return;
@@ -436,7 +434,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : null,
           ),
           title: Text(user.displayName ?? user.email ?? s['account']),
-          subtitle: user.email != null ? Text(user.email!) : null,
+          subtitle: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (user.email != null) Text(user.email!),
+              Text(
+                s['cloudSyncActive'],
+                style: TextStyle(fontSize: 12, color: scheme.primary),
+              ),
+            ],
+          ),
           trailing: _authBusy
               ? const SizedBox(
                   width: 20,
@@ -572,7 +580,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _AddMarkTile(label: s['addCombo'], onTap: _addCombo),
                 if (DefaultFolderService.isSupported) ...[
                   const SizedBox(height: 24),
-                  _SectionTitle(s['defaultFolder'], icon: Icons.folder_open_outlined),
+                  _SectionTitle(
+                    s['defaultFolder'],
+                    icon: Icons.folder_open_outlined,
+                  ),
                   Card(
                     margin: EdgeInsets.zero,
                     child: _folderName == null
@@ -804,7 +815,9 @@ class _MarkTile extends StatelessWidget {
               onPressed: onToggleDefault,
               icon: Icon(
                 isDefault ? Icons.star_rounded : Icons.star_outline_rounded,
-                color: isDefault ? DesignTokens.primary : DesignTokens.textFaint,
+                color: isDefault
+                    ? DesignTokens.primary
+                    : DesignTokens.textFaint,
               ),
             ),
             IconButton(

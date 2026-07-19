@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Cloud sync (see lib/services/cloud_sync_service.dart) — every user
+    // can only ever read or write their own document/marks, never anyone
+    // else's. No document content itself is ever stored here, only the
+    // signature/stamp library metadata (images live in Storage).
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+
+      match /marks/{markId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/saved_mark.dart';
@@ -18,6 +18,12 @@ class MarksService {
   static const _key = 'saved_marks_v1';
   static const _migratedKey = 'saved_marks_migrated_v1';
   static const _defaultKeyPrefix = 'default_mark_id_v1_';
+
+  /// Bumped after every local mutation (add/update/delete/restore/default
+  /// change) — [CloudSyncService] listens to this to know when to push a
+  /// fresh backup, without MarksService needing to know cloud sync exists.
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  static void _markChanged() => revision.value++;
 
   Future<List<SavedMark>> list({MarkType? type}) async {
     await _migrateLegacyIfNeeded();
@@ -98,11 +104,13 @@ class MarksService {
   Future<void> setDefault(MarkType type, String id) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('$_defaultKeyPrefix${type.name}', id);
+    _markChanged();
   }
 
   Future<void> clearDefault(MarkType type) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_defaultKeyPrefix${type.name}');
+    _markChanged();
   }
 
   Future<List<SavedMark>> _readAll() async {
@@ -124,6 +132,7 @@ class MarksService {
       _key,
       jsonEncode(marks.map((m) => m.toJson()).toList()),
     );
+    _markChanged();
   }
 
   /// One-time upgrade from the old single-signature/single-stamp storage

@@ -60,6 +60,11 @@ dependencies:
   sign_in_with_apple: ^6.1.0
   crypto: ^3.0.0
 
+  # Cloud sync (signatures/stamps/settings only — never the signed documents
+  # themselves, that stays local-only per the app's privacy principle)
+  cloud_firestore: ^5.4.3
+  firebase_storage: ^12.3.2
+
 dependency_overrides:
   # Newer google_sign_in_ios versions moved to GoogleSignIn 8 / GoogleUtilities
   # 8, which conflicts with Firebase's GoogleUtilities ~> 7 — pinning avoids a

@@ -34,6 +34,9 @@ class SettingsService {
     } else {
       await prefs.setString(_nameKey, trimmed);
     }
+    // Reuses MarksService's revision notifier — CloudSyncService listens to
+    // just the one signal for "something personal changed, push a backup".
+    MarksService.revision.value++;
   }
 
   /// Everything personal, as a portable JSON file.

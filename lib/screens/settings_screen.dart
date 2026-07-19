@@ -433,14 +433,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? const Icon(Icons.person_outline)
                 : null,
           ),
-          title: Text(user.displayName ?? user.email ?? s['account']),
+          title: Text(
+            user.displayName ?? user.email ?? s['account'],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           subtitle: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (user.email != null) Text(user.email!),
+              if (user.email != null)
+                Text(
+                  user.email!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  // The email has no spaces to wrap at, so a squeezed row
+                  // (avatar + sign-out button both take space) used to
+                  // break it mid-word instead of truncating cleanly.
+                  textDirection: TextDirection.ltr,
+                ),
               Text(
                 s['cloudSyncActive'],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: scheme.primary),
               ),
             ],

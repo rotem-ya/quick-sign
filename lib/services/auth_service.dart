@@ -24,6 +24,17 @@ class AuthService {
   FirebaseAuth? _auth;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
+  /// Rolling log of auth events, newest last — shown directly in Settings
+  /// (see SettingsScreen's account section) so sign-in issues can be
+  /// diagnosed on a real device without adb/DevTools access.
+  final ValueNotifier<List<String>> debugLog = ValueNotifier<List<String>>([]);
+
+  void _log(String line) {
+    debugPrint('AuthService: $line');
+    final stamp = DateTime.now().toIso8601String().substring(11, 19);
+    debugLog.value = [...debugLog.value, '$stamp $line'];
+  }
+
   void markAvailable(FirebaseAuth auth) {
     _auth = auth;
     isAvailable = true;
@@ -31,13 +42,9 @@ class AuthService {
     // Diagnostic: Firebase Auth persists sign-in natively, so currentUser
     // should already reflect a previous session right after init — logged
     // to help diagnose reports of sign-in not surviving an app restart.
-    debugPrint(
-      'AuthService: available, currentUser=${auth.currentUser?.uid ?? "none"}',
-    );
+    _log('available, currentUser=${auth.currentUser?.uid ?? "none"}');
     auth.authStateChanges().listen((user) {
-      debugPrint(
-        'AuthService: authStateChanges -> ${user?.uid ?? "signed out"}',
-      );
+      _log('authStateChanges -> ${user?.uid ?? "signed out"}');
     });
   }
 
@@ -117,6 +124,7 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    _log('signOut() called explicitly');
     await _googleSignIn.signOut();
     await _auth?.signOut();
   }
@@ -150,7 +158,7 @@ class AuthService {
           .first
           .timeout(const Duration(seconds: 3));
     } catch (e) {
-      debugPrint('AuthService: recovery failed: $e');
+      _log('recovery failed: $e');
       return null;
     }
   }

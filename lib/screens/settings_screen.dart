@@ -490,6 +490,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _authBusy ? null : _signInWithApple,
             ),
           ],
+          // Temporary — shows exactly what happened on this app launch
+          // (was a previous session found? did it get signed out and when?)
+          // so a sign-in-not-persisting report can be diagnosed from a
+          // screenshot, without adb/DevTools. Remove once resolved.
+          ValueListenableBuilder<List<String>>(
+            valueListenable: AuthService.instance.debugLog,
+            builder: (context, log, _) {
+              if (log.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  log.join('\n'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

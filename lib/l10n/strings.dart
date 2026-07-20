@@ -125,6 +125,9 @@ class S {
       'signInComingSoonBody':
           'התחברות אמיתית עם Google דורשת מפתח הגדרה (OAuth Client ID) שרק בעל האפליקציה יכול ליצור ב-Google Cloud Console — תהליך חד-פעמי של כמה דקות, בחינם.\n\nבינתיים, "גיבוי מהיר לתיקיית ברירת מחדל" למטה עושה כמעט אותו דבר — שומר את כל החתימות וההגדרות ישירות ל-Drive/OneDrive שלכם, בלי שום חשבון.',
       'cloudSyncActive': 'מסונכרן אוטומטית — חתימות, חותמות והגדרות',
+      'syncNow': 'סנכרן עכשיו',
+      'syncOkTitle': 'הסנכרון הצליח',
+      'syncFailedTitle': 'הסנכרון נכשל',
       'savedItems': 'חתימה וחותמת',
       'replace': 'החלפה',
       'delete': 'מחיקה',
@@ -309,6 +312,9 @@ class S {
           'Real Google sign-in needs a setup key (OAuth Client ID) that only the app\'s owner can create in Google Cloud Console — a one-time, few-minute, free process.\n\nMeanwhile, "Quick backup to default folder" below does almost the same thing — saves every signature and setting straight to your Drive/OneDrive, no account needed.',
       'cloudSyncActive':
           'Syncing automatically — signatures, stamps & settings',
+      'syncNow': 'Sync now',
+      'syncOkTitle': 'Sync succeeded',
+      'syncFailedTitle': 'Sync failed',
       'savedItems': 'Signature & stamp',
       'replace': 'Replace',
       'delete': 'Delete',

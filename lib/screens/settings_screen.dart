@@ -3,12 +3,13 @@ import 'dart:io' show Platform;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../models/saved_mark.dart';
 import '../services/auth_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/default_folder_service.dart';
 import '../services/marks_service.dart';
 import '../services/settings_service.dart';
@@ -52,6 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   User? _user;
   bool _authBusy = false;
+  bool _syncBusy = false;
   StreamSubscription<User?>? _authSub;
 
   @override
@@ -174,6 +176,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _authBusy = false);
     }
+  }
+
+  /// Pushes the signature/stamp library to the account on demand and reports
+  /// the exact outcome — a success count, or the precise Firebase error (the
+  /// common ones being Firestore/Storage not enabled or rules not deployed).
+  Future<void> _syncNow() async {
+    if (_syncBusy) return;
+    setState(() => _syncBusy = true);
+    final result = await CloudSyncService.instance.syncNow();
+    if (!mounted) return;
+    setState(() => _syncBusy = false);
+    final s = S.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(result.ok ? s['syncOkTitle'] : s['syncFailedTitle']),
+        content: Text(result.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(s['close']),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Counts what's actually in the exported bundle right now — shown in the
@@ -424,49 +451,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (user != null) {
       return Card(
         margin: EdgeInsets.zero,
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundImage: user.photoURL != null
-                ? NetworkImage(user.photoURL!)
-                : null,
-            child: user.photoURL == null
-                ? const Icon(Icons.person_outline)
-                : null,
-          ),
-          title: Text(
-            user.displayName ?? user.email ?? s['account'],
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (user.email != null)
-                Text(
-                  user.email!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  // The email has no spaces to wrap at, so a squeezed row
-                  // (avatar + sign-out button both take space) used to
-                  // break it mid-word instead of truncating cleanly.
-                  textDirection: TextDirection.ltr,
-                ),
-              Text(
-                s['cloudSyncActive'],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundImage: user.photoURL != null
+                    ? NetworkImage(user.photoURL!)
+                    : null,
+                child: user.photoURL == null
+                    ? const Icon(Icons.person_outline)
+                    : null,
+              ),
+              title: Text(
+                user.displayName ?? user.email ?? s['account'],
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: scheme.primary),
               ),
-            ],
-          ),
-          trailing: _authBusy
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : TextButton(onPressed: _signOut, child: Text(s['signOut'])),
+              subtitle: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (user.email != null)
+                    Text(
+                      user.email!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      // The email has no spaces to wrap at, so a squeezed row
+                      // (avatar + sign-out button both take space) used to
+                      // break it mid-word instead of truncating cleanly.
+                      textDirection: TextDirection.ltr,
+                    ),
+                  Text(
+                    s['cloudSyncActive'],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: scheme.primary),
+                  ),
+                ],
+              ),
+              trailing: _authBusy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : TextButton(onPressed: _signOut, child: Text(s['signOut'])),
+            ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(
+                  start: 8,
+                  bottom: 4,
+                ),
+                child: _syncBusy
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : TextButton.icon(
+                        onPressed: _syncNow,
+                        icon: const Icon(Icons.cloud_sync_outlined, size: 18),
+                        label: Text(s['syncNow']),
+                      ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -505,14 +560,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _authBusy ? null : _signInWithApple,
             ),
           ],
-          // Temporary — shows exactly what happened on this app launch
-          // (was a previous session found? did it get signed out and when?)
-          // so a sign-in-not-persisting report can be diagnosed from a
-          // screenshot, without adb/DevTools. Remove once resolved.
+          // Developer diagnostics only — never shown in a release/store
+          // build (gated on kDebugMode). On-device users get the "Sync now"
+          // button above, which surfaces any error on demand in a dialog.
           ValueListenableBuilder<List<String>>(
             valueListenable: AuthService.instance.debugLog,
             builder: (context, log, _) {
-              if (log.isEmpty) return const SizedBox.shrink();
+              if (log.isEmpty || !kDebugMode) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Text(

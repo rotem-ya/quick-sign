@@ -97,39 +97,66 @@ class CloudSyncService {
       return;
     }
     try {
-      final marks = await _marksService.list();
-      final name = await _settingsService.getName();
-      final defaults = <String, String>{};
-      for (final type in MarkType.values) {
-        final id = (await _marksService.getDefault(type))?.id;
-        if (id != null) defaults[type.name] = id;
-      }
-
-      final userDoc = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid);
-      await userDoc.set({
-        'name': name,
-        'defaults': defaults,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      final marksCollection = userDoc.collection('marks');
-      final storage = FirebaseStorage.instance;
-      for (final mark in marks) {
-        await marksCollection.doc(mark.id).set({
-          'type': mark.type.name,
-          'name': mark.name,
-          'design': mark.design?.toJson(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        await storage
-            .ref('users/${user.uid}/marks/${mark.id}.png')
-            .putData(mark.imageBytes);
-      }
-      _log('CloudSync: pushed ${marks.length} mark(s) + profile');
+      final count = await _pushFor(user);
+      _log('CloudSync: pushed $count mark(s) + profile');
     } catch (e) {
       _log('CloudSync: push failed: $e');
+    }
+  }
+
+  /// The actual upload — throws on any Firestore/Storage failure so callers
+  /// can either swallow it ([_push]) or surface it ([syncNow]). Returns the
+  /// number of marks written.
+  Future<int> _pushFor(User user) async {
+    final marks = await _marksService.list();
+    final name = await _settingsService.getName();
+    final defaults = <String, String>{};
+    for (final type in MarkType.values) {
+      final id = (await _marksService.getDefault(type))?.id;
+      if (id != null) defaults[type.name] = id;
+    }
+
+    final userDoc = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
+    await userDoc.set({
+      'name': name,
+      'defaults': defaults,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    final marksCollection = userDoc.collection('marks');
+    final storage = FirebaseStorage.instance;
+    for (final mark in marks) {
+      await marksCollection.doc(mark.id).set({
+        'type': mark.type.name,
+        'name': mark.name,
+        'design': mark.design?.toJson(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await storage
+          .ref('users/${user.uid}/marks/${mark.id}.png')
+          .putData(mark.imageBytes);
+    }
+    return marks.length;
+  }
+
+  /// User-triggered sync (the "Sync now" button in Settings). Runs a push
+  /// immediately and returns a short, human-readable result — success count
+  /// or the exact failure — so the outcome is visible on the spot without a
+  /// standing debug panel. [ok] says whether it succeeded.
+  Future<({bool ok, String message})> syncNow() async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) {
+      return (ok: false, message: 'לא מחובר לחשבון.');
+    }
+    try {
+      final count = await _pushFor(user);
+      _log('CloudSync: manual sync ok ($count mark(s))');
+      return (ok: true, message: 'סונכרנו $count פריטים לחשבון.');
+    } catch (e) {
+      _log('CloudSync: manual sync failed: $e');
+      return (ok: false, message: '$e');
     }
   }
 

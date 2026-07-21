@@ -87,7 +87,7 @@ class SettingsService {
           );
           idMap[mark.id] = added.id;
         } on MarksLimitException {
-          break; // library full — import what fits, skip the rest.
+          continue; // that type is full — skip it, keep importing others.
         }
       }
       final defaults = decoded['defaults'];

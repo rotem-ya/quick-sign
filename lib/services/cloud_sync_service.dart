@@ -126,10 +126,12 @@ class CloudSyncService {
     return pushed;
   }
 
-  Future<void> _pull(String uid) async {
+  /// Restores cloud marks/profile not already on this device. Returns the
+  /// number of marks restored.
+  Future<int> _pull(String uid) async {
     final userSnap = await _userDoc(uid).get();
     final data = userSnap.data();
-    if (data == null) return;
+    if (data == null) return 0;
 
     // Fill a locally-empty name from the cloud; never clobber a local one.
     final localName = await _settingsService.getName();
@@ -176,6 +178,7 @@ class CloudSyncService {
         // Unknown type from a newer/older build — skip.
       }
     }
+    return restored;
   }
 
   /// User-triggered sync (the "Sync now" button). Pulls then pushes, and
@@ -184,10 +187,18 @@ class CloudSyncService {
     final user = AuthService.instance.currentUser;
     if (user == null) return (ok: false, message: 'לא מחובר לחשבון.');
     try {
-      if ((await _userDoc(user.uid).get()).exists) await _pull(user.uid);
-      final n = await _pushFor(user);
-      _log('CloudSync: manual sync ok ($n)');
-      return (ok: true, message: 'סונכרנו $n חתימות/חותמות + הגדרות לחשבון.');
+      var restored = 0;
+      if ((await _userDoc(user.uid).get()).exists) {
+        restored = await _pull(user.uid);
+      }
+      final pushed = await _pushFor(user);
+      _log('CloudSync: manual sync ok (restored $restored, pushed $pushed)');
+      final restoredPart =
+          restored > 0 ? 'שוחזרו $restored מהחשבון · ' : '';
+      return (
+        ok: true,
+        message: '$restoredPart$pushed חתימות/חותמות נשמרו לחשבון.',
+      );
     } catch (e) {
       _log('CloudSync: manual sync failed: $e');
       return (ok: false, message: '$e');

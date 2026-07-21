@@ -63,13 +63,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _user = AuthService.instance.currentUser;
     _subscribeToAuthState();
     AuthService.instance.availableNotifier.addListener(_onAuthAvailable);
+    // Reload when the mark library changes — including a background restore
+    // from the cloud after sign-in — so restored signatures appear without
+    // reopening the screen.
+    MarksService.revision.addListener(_onMarksChanged);
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
     AuthService.instance.availableNotifier.removeListener(_onAuthAvailable);
+    MarksService.revision.removeListener(_onMarksChanged);
     super.dispose();
+  }
+
+  void _onMarksChanged() {
+    if (mounted) _load();
   }
 
   // Firebase.initializeApp() in main() completes asynchronously, often after
@@ -265,7 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── Marks (signatures / stamps) ────────────────────────────────────────
 
   Future<void> _addSignature() async {
-    if (await _marksService.atCapacity()) {
+    if (await _marksService.atCapacity(MarkType.signature)) {
       if (mounted) _snack(S.of(context)['marksLimitReached']);
       return;
     }
@@ -292,7 +301,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _addStamp() async {
-    if (await _marksService.atCapacity()) {
+    if (await _marksService.atCapacity(MarkType.stamp)) {
       if (mounted) _snack(S.of(context)['marksLimitReached']);
       return;
     }
@@ -364,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// combining, just picking this one item.
   Future<void> _addCombo() async {
     final s = S.of(context);
-    if (await _marksService.atCapacity()) {
+    if (await _marksService.atCapacity(MarkType.combo)) {
       if (mounted) _snack(s['marksLimitReached']);
       return;
     }
@@ -616,7 +625,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              // Add the system bottom inset (Android nav bar / gesture area)
+              // so the last section (About) isn't hidden behind it.
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.of(context).padding.bottom,
+              ),
               children: [
                 _SectionTitle(s['profile'], icon: Icons.person_outline),
                 TextField(

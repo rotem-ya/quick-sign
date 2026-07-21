@@ -16,6 +16,7 @@ import '../services/settings_service.dart';
 import '../services/share_service.dart';
 import '../services/stamp_service.dart';
 import '../theme/design_tokens.dart';
+import '../widgets/email_auth_sheet.dart';
 import '../widgets/signature_sheet.dart';
 import '../widgets/transparency_checkerboard.dart';
 import 'stamp_designer_screen.dart';
@@ -157,13 +158,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  bool get _appleSignInSupported => !kIsWeb && Platform.isIOS;
+  // iOS uses the native Apple SDK; web goes through Firebase's OAuth popup.
+  // (Android Apple sign-in needs an Apple Services ID redirect — not yet set up.)
+  bool get _appleSignInSupported => kIsWeb || (!kIsWeb && Platform.isIOS);
 
   Future<void> _signInWithGoogle() =>
       _runAuthAction(AuthService.instance.signInWithGoogle);
 
   Future<void> _signInWithApple() =>
       _runAuthAction(AuthService.instance.signInWithApple);
+
+  Future<void> _signInWithEmail() async {
+    if (_authBusy) return;
+    await showEmailAuthDialog(context);
+    // authStateChanges updates _user; nothing else to do here.
+  }
 
   Future<void> _runAuthAction(Future<void> Function() action) async {
     if (_authBusy) return;
@@ -618,6 +627,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _authBusy ? null : _signInWithApple,
             ),
           ],
+          const Divider(height: 1),
+          ListTile(
+            leading: Icon(Icons.alternate_email, color: scheme.onSurfaceVariant),
+            title: Text(s['signInWithEmail']),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _authBusy ? null : _signInWithEmail,
+          ),
           // Developer diagnostics only — never shown in a release/store
           // build (gated on kDebugMode). On-device users get the "Sync now"
           // button above, which surfaces any error on demand in a dialog.

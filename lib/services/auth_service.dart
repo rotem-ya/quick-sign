@@ -132,6 +132,18 @@ class AuthService {
   Future<User?> signInWithApple() async {
     final auth = _auth;
     if (auth == null) return null;
+
+    if (kIsWeb) {
+      // On web (and any non-Apple platform) Apple sign-in goes through
+      // Firebase's OAuth popup, the same way Google does — no native Apple SDK.
+      // Requires an Apple "Services ID" configured in the Firebase console.
+      final provider = OAuthProvider('apple.com')
+        ..addScope('email')
+        ..addScope('name');
+      final userCredential = await auth.signInWithPopup(provider);
+      return userCredential.user;
+    }
+
     final rawNonce = _generateNonce();
     final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
 
@@ -154,6 +166,39 @@ class AuthService {
       if (_isPigeonCastError(e)) return _recoverFromSignInError();
       rethrow;
     }
+  }
+
+  /// Email + password — the universal fallback for users without a Google or
+  /// Apple account, and works identically on Android, iOS, and web. Throws
+  /// [FirebaseAuthException] on bad input (wrong password, email in use, weak
+  /// password, …) so the UI can show a friendly message.
+  Future<User?> registerWithEmail(String email, String password) async {
+    final auth = _auth;
+    if (auth == null) return null;
+    final cred = await auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    _log('registered with email ${cred.user?.uid ?? "?"}');
+    return cred.user;
+  }
+
+  Future<User?> signInWithEmail(String email, String password) async {
+    final auth = _auth;
+    if (auth == null) return null;
+    final cred = await auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    _log('signed in with email ${cred.user?.uid ?? "?"}');
+    return cred.user;
+  }
+
+  Future<void> sendPasswordReset(String email) async {
+    final auth = _auth;
+    if (auth == null) return;
+    await auth.sendPasswordResetEmail(email: email.trim());
+    _log('password reset sent to $email');
   }
 
   Future<void> signOut() async {

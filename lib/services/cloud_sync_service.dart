@@ -2,62 +2,52 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/saved_mark.dart';
-import '../models/stamp_design.dart';
 import 'auth_service.dart';
 import 'marks_service.dart';
 import 'settings_service.dart';
 
-/// Mirrors the signature/stamp library + profile name to the signed-in
-/// user's Firebase account — Firestore for metadata, Storage for the mark
-/// images (Firestore's 1MB document limit doesn't fit many base64 images).
+/// Syncs only **lightweight account data** — the user's profile/settings — to
+/// the signed-in user's Firestore document.
 ///
-/// Never touches the documents being signed — those stay device-only, per
-/// the app's core privacy principle. Only what [SettingsService.exportBundle]
-/// already covers (the same data the manual "backup to a file" feature
-/// exports) gets mirrored, just automatically and to the account instead of
-/// a chosen file.
+/// By design it does NOT store signatures, stamps, or documents. Those are the
+/// user's own content and belong in the user's own storage — their Google
+/// Drive / OneDrive / chosen folder (via the folder backup in Settings), never
+/// in our Firebase. This keeps the cloud footprint tiny (Firestore free tier,
+/// **no Firebase Storage / Blaze needed**) and matches the app's privacy
+/// principle: the heavy, personal content stays with the user.
 ///
-/// Every call is best-effort: a Firestore/Storage failure (offline, not yet
-/// enabled in the Firebase console, security rules not deployed, etc.) never
-/// surfaces to the user or blocks anything — same defensive posture the rest
-/// of the Firebase integration has had since before a real project existed.
+/// Best-effort: any Firestore failure (offline, not enabled yet, rules not
+/// deployed) is caught and never blocks anything. The on-demand "Sync now"
+/// button in Settings surfaces the exact result when the user asks.
 class CloudSyncService {
   CloudSyncService._();
   static final CloudSyncService instance = CloudSyncService._();
 
-  final MarksService _marksService = MarksService();
   final SettingsService _settingsService = SettingsService();
 
   VoidCallback? _revisionListener;
   Timer? _debounce;
   bool _started = false;
 
-  /// Logs both to the console and to the on-device diagnostics panel in
-  /// Settings (via [AuthService]), so a failing sync — the single most
-  /// common being Firestore/Storage not yet enabled in the Firebase console,
-  /// or rules not deployed — is actually visible on the test device.
+  /// Logs to console + the on-device diagnostics the "Sync now" flow shares,
+  /// so a failing sync is visible without adb.
   void _log(String line) => AuthService.instance.log(line);
 
-  /// Call once, after Firebase finishes initializing. Safe to call more than
-  /// once — only the first call does anything. Runs for the app's whole
-  /// lifetime (this is a singleton), so the auth subscription is never
-  /// cancelled on purpose — there's no natural teardown point.
+  /// Call once, after Firebase initializes. Safe to call repeatedly.
   void start() {
     if (_started) return;
     _started = true;
-    _log('CloudSync: started, watching sign-in + mark changes');
+    _log('CloudSync: started, watching sign-in + settings changes');
     AuthService.instance.authStateChanges.listen((user) {
       _log('CloudSync: authStateChanges -> ${user?.uid ?? "signed out"}');
       if (user != null) unawaited(_onSignedIn(user));
     });
+    // Reuses MarksService's "something personal changed" signal — Settings
+    // .setName bumps it too — to re-push the (tiny) profile, debounced.
     _revisionListener = () {
       if (AuthService.instance.currentUser == null) return;
-      // Debounced: a burst of local edits (e.g. importing a backup) pushes
-      // once, not once per mark.
       _debounce?.cancel();
       _debounce = Timer(const Duration(seconds: 2), () => unawaited(_push()));
     };
@@ -66,26 +56,20 @@ class CloudSyncService {
 
   Future<void> _onSignedIn(User user) async {
     try {
-      final doc = await FirebaseFirestore.instance
+      final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
-      _log('CloudSync: sign-in check ok, cloud doc exists=${doc.exists}');
-      // Two-way merge on sign-in. First pull what the account already has
-      // that isn't on this device, then always push — so signatures created
-      // on THIS device (while signed out, or before the account had any
-      // backup) are uploaded too, not silently left local-only. Both are
-      // union merges (nothing is deleted on either side), so the order is
-      // safe and the result converges to the union of both.
-      if (doc.exists) {
-        await _pull(user.uid);
+      _log('CloudSync: sign-in check ok, cloud doc exists=${snapshot.exists}');
+      // Fill a locally-empty name from the cloud (never clobber a local one),
+      // then push so a name set on this device reaches the account.
+      final cloudName = snapshot.data()?['name'] as String?;
+      final localName = await _settingsService.getName();
+      if (localName == null && cloudName != null && cloudName.isNotEmpty) {
+        await _settingsService.setName(cloudName);
       }
       await _push();
     } catch (e) {
-      // Always logged (not just kDebugMode) — this is exactly the kind of
-      // failure (rules not deployed, Firestore/Storage not enabled yet)
-      // that needs to be visible to diagnose remotely, since it otherwise
-      // fails completely silently by design.
       _log('CloudSync: sign-in check failed: $e');
     }
   }
@@ -97,142 +81,38 @@ class CloudSyncService {
       return;
     }
     try {
-      final count = await _pushFor(user);
-      _log('CloudSync: pushed $count mark(s) + profile');
+      await _pushFor(user);
+      _log('CloudSync: profile pushed');
     } catch (e) {
       _log('CloudSync: push failed: $e');
     }
   }
 
-  /// The actual upload — throws on any Firestore/Storage failure so callers
-  /// can either swallow it ([_push]) or surface it ([syncNow]). Returns the
-  /// number of marks written.
-  Future<int> _pushFor(User user) async {
-    final marks = await _marksService.list();
+  /// Writes the lightweight profile to Firestore. Throws on failure so
+  /// [syncNow] can surface the exact error. `merge: true` never disturbs any
+  /// other field on the user document.
+  Future<void> _pushFor(User user) async {
     final name = await _settingsService.getName();
-    final defaults = <String, String>{};
-    for (final type in MarkType.values) {
-      final id = (await _marksService.getDefault(type))?.id;
-      if (id != null) defaults[type.name] = id;
-    }
-
-    final userDoc = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid);
-    await userDoc.set({
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       'name': name,
-      'defaults': defaults,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
-
-    final marksCollection = userDoc.collection('marks');
-    final storage = FirebaseStorage.instance;
-    for (final mark in marks) {
-      await marksCollection.doc(mark.id).set({
-        'type': mark.type.name,
-        'name': mark.name,
-        'design': mark.design?.toJson(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      await storage
-          .ref('users/${user.uid}/marks/${mark.id}.png')
-          .putData(mark.imageBytes);
-    }
-    return marks.length;
+    }, SetOptions(merge: true));
   }
 
-  /// User-triggered sync (the "Sync now" button in Settings). Runs a push
-  /// immediately and returns a short, human-readable result — success count
-  /// or the exact failure — so the outcome is visible on the spot without a
-  /// standing debug panel. [ok] says whether it succeeded.
+  /// User-triggered sync (the "Sync now" button). Returns a human-readable
+  /// result — success, or the exact Firestore error — for the Settings dialog.
   Future<({bool ok, String message})> syncNow() async {
     final user = AuthService.instance.currentUser;
     if (user == null) {
       return (ok: false, message: 'לא מחובר לחשבון.');
     }
     try {
-      final count = await _pushFor(user);
-      _log('CloudSync: manual sync ok ($count mark(s))');
-      return (ok: true, message: 'סונכרנו $count פריטים לחשבון.');
+      await _pushFor(user);
+      _log('CloudSync: manual sync ok');
+      return (ok: true, message: 'ההגדרות סונכרנו לחשבון.');
     } catch (e) {
       _log('CloudSync: manual sync failed: $e');
       return (ok: false, message: '$e');
-    }
-  }
-
-  Future<void> _pull(String uid) async {
-    try {
-      final firestore = FirebaseFirestore.instance;
-      final userDoc = await firestore.collection('users').doc(uid).get();
-      final data = userDoc.data();
-      if (data == null) return;
-
-      // Never overwrite a name/default already set locally — cloud data
-      // only fills in gaps, it doesn't clobber what's already on this
-      // device.
-      final localName = await _settingsService.getName();
-      final cloudName = data['name'] as String?;
-      if (localName == null && cloudName != null && cloudName.isNotEmpty) {
-        await _settingsService.setName(cloudName);
-      }
-
-      final localMarks = await _marksService.list();
-      final localIds = localMarks.map((m) => m.id).toSet();
-
-      final marksSnapshot = await firestore
-          .collection('users')
-          .doc(uid)
-          .collection('marks')
-          .get();
-      _log(
-        'CloudSync: pull found ${marksSnapshot.docs.length} cloud mark(s), '
-        '${localIds.length} already local',
-      );
-      final storage = FirebaseStorage.instance;
-      var restored = 0;
-      for (final doc in marksSnapshot.docs) {
-        if (localIds.contains(doc.id)) continue; // already on this device
-        try {
-          final markData = doc.data();
-          final type = MarkType.values.byName(markData['type'] as String);
-          final designJson = markData['design'] as Map<String, dynamic>?;
-          final imageBytes = await storage
-              .ref('users/$uid/marks/${doc.id}.png')
-              .getData();
-          if (imageBytes == null) continue;
-          await _marksService.restore(
-            SavedMark(
-              id: doc.id,
-              type: type,
-              name: markData['name'] as String? ?? '',
-              imageBytes: imageBytes,
-              design: designJson == null
-                  ? null
-                  : StampDesign.fromJson(designJson),
-            ),
-          );
-          restored++;
-        } catch (e) {
-          // One malformed cloud mark shouldn't stop the rest from restoring.
-          _log('CloudSync: skipping cloud mark ${doc.id}: $e');
-        }
-      }
-      _log('CloudSync: pull restored $restored mark(s)');
-
-      final cloudDefaults =
-          (data['defaults'] as Map<String, dynamic>?) ?? const {};
-      for (final entry in cloudDefaults.entries) {
-        try {
-          final type = MarkType.values.byName(entry.key);
-          if (await _marksService.getDefault(type) == null) {
-            await _marksService.setDefault(type, entry.value as String);
-          }
-        } catch (e) {
-          _log('CloudSync: skipping cloud default $entry: $e');
-        }
-      }
-    } catch (e) {
-      _log('CloudSync: pull failed: $e');
     }
   }
 }

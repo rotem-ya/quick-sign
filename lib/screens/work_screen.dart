@@ -591,14 +591,19 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
           duration: const Duration(seconds: 6),
           action: SnackBarAction(
             label: s['save'],
-            onPressed: () {
-              unawaited(
-                _marksService.add(
+            onPressed: () async {
+              try {
+                await _marksService.add(
                   type: MarkType.signature,
                   name: s['sign'],
                   imageBytes: bytes,
-                ),
-              );
+                );
+              } on MarksLimitException {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(s['marksLimitReached'])),
+                );
+              }
             },
           ),
         ),

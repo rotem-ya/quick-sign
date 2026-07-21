@@ -14,10 +14,28 @@ import 'stamp_service.dart';
 /// Stored as JSON (with images as base64) in SharedPreferences: works
 /// identically on every platform, including web, and rides Android's
 /// automatic backup like the single-item version did before it.
+/// Thrown by [MarksService.add] when the library is already at [MarksService
+/// .maxMarks]. Callers surface a friendly message instead of adding.
+class MarksLimitException implements Exception {
+  const MarksLimitException(this.limit);
+  final int limit;
+  @override
+  String toString() => 'MarksLimitException($limit)';
+}
+
 class MarksService {
   static const _key = 'saved_marks_v1';
   static const _migratedKey = 'saved_marks_migrated_v1';
   static const _defaultKeyPrefix = 'default_mark_id_v1_';
+
+  /// Hard cap on the total number of saved marks (signatures + stamps +
+  /// combos). Generous enough that normal use never hits it, while bounding
+  /// the per-user cloud footprint. Enforced in [add].
+  static const int maxMarks = 50;
+
+  /// True when the library is full — used by the UI to block an add early
+  /// (before the user draws) rather than only failing at [add].
+  Future<bool> atCapacity() async => (await list()).length >= maxMarks;
 
   /// Bumped after every local mutation (add/update/delete/restore/default
   /// change) — [CloudSyncService] listens to this to know when to push a
@@ -38,6 +56,10 @@ class MarksService {
     required Uint8List imageBytes,
     StampDesign? design,
   }) async {
+    final current = await list();
+    if (current.length >= maxMarks) {
+      throw const MarksLimitException(maxMarks);
+    }
     final mark = SavedMark(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       type: type,
@@ -45,7 +67,6 @@ class MarksService {
       imageBytes: imageBytes,
       design: design,
     );
-    final current = await list();
     await _writeAll([...current, mark]);
     return mark;
   }

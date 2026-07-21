@@ -78,13 +78,17 @@ class SettingsService {
         if (item is! Map<String, dynamic>) continue;
         final mark = SavedMark.fromJson(item);
         if (mark == null) continue;
-        final added = await _marksService.add(
-          type: mark.type,
-          name: mark.name,
-          imageBytes: mark.imageBytes,
-          design: mark.design,
-        );
-        idMap[mark.id] = added.id;
+        try {
+          final added = await _marksService.add(
+            type: mark.type,
+            name: mark.name,
+            imageBytes: mark.imageBytes,
+            design: mark.design,
+          );
+          idMap[mark.id] = added.id;
+        } on MarksLimitException {
+          break; // library full — import what fits, skip the rest.
+        }
       }
       final defaults = decoded['defaults'];
       if (defaults is Map<String, dynamic>) {

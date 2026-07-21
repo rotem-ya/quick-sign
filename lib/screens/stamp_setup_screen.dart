@@ -229,12 +229,21 @@ class _StampSetupScreenState extends State<StampSetupScreen> {
         type: MarkType.stamp,
       )).length;
       if (!mounted) return;
-      mark = await _marksService.add(
-        type: MarkType.stamp,
-        name: '${S.of(context)['stamp']} ${existingCount + 1}',
-        imageBytes: bytes,
-        design: _pendingDesign,
-      );
+      try {
+        mark = await _marksService.add(
+          type: MarkType.stamp,
+          name: '${S.of(context)['stamp']} ${existingCount + 1}',
+          imageBytes: bytes,
+          design: _pendingDesign,
+        );
+      } on MarksLimitException {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(S.of(context)['marksLimitReached'])),
+        );
+        return;
+      }
     }
     if (!mounted) return;
     Navigator.of(context).pop(mark);

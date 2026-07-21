@@ -265,13 +265,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── Marks (signatures / stamps) ────────────────────────────────────────
 
   Future<void> _addSignature() async {
+    if (await _marksService.atCapacity()) {
+      if (mounted) _snack(S.of(context)['marksLimitReached']);
+      return;
+    }
     final bytes = await showDrawCanvasSheet(context);
     if (bytes == null || !mounted) return;
-    await _marksService.add(
-      type: MarkType.signature,
-      name: '${S.of(context)['sign']} ${_signatures.length + 1}',
-      imageBytes: bytes,
-    );
+    try {
+      await _marksService.add(
+        type: MarkType.signature,
+        name: '${S.of(context)['sign']} ${_signatures.length + 1}',
+        imageBytes: bytes,
+      );
+    } on MarksLimitException {
+      if (mounted) _snack(S.of(context)['marksLimitReached']);
+      return;
+    }
     await _load();
   }
 
@@ -283,6 +292,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _addStamp() async {
+    if (await _marksService.atCapacity()) {
+      if (mounted) _snack(S.of(context)['marksLimitReached']);
+      return;
+    }
     final mark = await Navigator.of(context).push<SavedMark>(
       MaterialPageRoute(builder: (_) => const StampSetupScreen()),
     );
@@ -351,6 +364,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// combining, just picking this one item.
   Future<void> _addCombo() async {
     final s = S.of(context);
+    if (await _marksService.atCapacity()) {
+      if (mounted) _snack(s['marksLimitReached']);
+      return;
+    }
     if (_signatures.isEmpty || _stamps.isEmpty) {
       _snack(s['comboNeedsBoth']);
       return;
@@ -366,11 +383,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       picked.stamp.imageBytes,
     );
     if (!mounted) return;
-    await _marksService.add(
-      type: MarkType.combo,
-      name: '${s['sign']}+${s['stamp']} ${_combos.length + 1}',
-      imageBytes: bytes,
-    );
+    try {
+      await _marksService.add(
+        type: MarkType.combo,
+        name: '${s['sign']}+${s['stamp']} ${_combos.length + 1}',
+        imageBytes: bytes,
+      );
+    } on MarksLimitException {
+      if (mounted) _snack(s['marksLimitReached']);
+      return;
+    }
     await _load();
   }
 

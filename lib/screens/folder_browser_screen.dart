@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../l10n/strings.dart';
 import '../models/library_file.dart';
+import '../services/auth_service.dart';
 import '../services/folder_library_service.dart';
 import '../theme/design_tokens.dart';
 
@@ -47,11 +48,16 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final sw = Stopwatch()..start();
     final folders = await _library.listFolders();
     final files = <LibraryFile>[];
     for (final folder in folders) {
       files.addAll(await _library.listFiles(folder));
     }
+    AuthService.instance.log(
+      'Folders: ${files.length} file(s) from ${folders.length} folder(s) '
+      'in ${sw.elapsedMilliseconds}ms',
+    );
     if (!mounted) return;
     setState(() {
       _folders = folders;

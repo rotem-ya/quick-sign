@@ -33,7 +33,11 @@ class AuthService {
   void _log(String line) {
     debugPrint('AuthService: $line');
     final stamp = DateTime.now().toIso8601String().substring(11, 19);
-    debugLog.value = [...debugLog.value, '$stamp $line'];
+    // Keep only the last ~300 lines — auth, cloud sync, render and folder
+    // events all feed in here, so it must not grow unbounded.
+    final next = [...debugLog.value, '$stamp $line'];
+    debugLog.value =
+        next.length > 300 ? next.sublist(next.length - 300) : next;
   }
 
   /// Lets sibling services (e.g. [CloudSyncService]) surface their own

@@ -4,6 +4,8 @@ import 'dart:ui';
 
 import 'package:pdfx/pdfx.dart';
 
+import 'auth_service.dart';
+
 class PdfDocumentInfo {
   PdfDocumentInfo({required this.pageCount, required this.pageSizes});
 
@@ -64,10 +66,25 @@ class PdfRenderService {
 
   /// PNG bytes of the zero-indexed [pageIndex].
   Future<Uint8List> renderPage(int pageIndex) {
-    return _cache.putIfAbsent(
-      pageIndex,
-      () => _renderPage(pageIndex).timeout(renderTimeout),
-    );
+    return _cache.putIfAbsent(pageIndex, () async {
+      final sw = Stopwatch()..start();
+      try {
+        final bytes = await _renderPage(pageIndex).timeout(renderTimeout);
+        // Log slow renders so a "not loaded" report has a timing trail.
+        if (sw.elapsedMilliseconds > 2500) {
+          AuthService.instance.log(
+            'Render: page ${pageIndex + 1} slow (${sw.elapsedMilliseconds}ms)',
+          );
+        }
+        return bytes;
+      } catch (e) {
+        AuthService.instance.log(
+          'Render: page ${pageIndex + 1} failed after '
+          '${sw.elapsedMilliseconds}ms: $e',
+        );
+        rethrow;
+      }
+    });
   }
 
   /// Drops a page's cached render (including a failed/timed-out one) so

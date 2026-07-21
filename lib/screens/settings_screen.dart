@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../l10n/strings.dart';
 import '../models/saved_mark.dart';
@@ -494,6 +495,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// Hidden diagnostics — long-press the About card. Shows the rolling
+  /// on-device log (auth, cloud sync, page-render failures, folder-load
+  /// timing) with a copy button so it can be shared for a bug report.
+  Future<void> _showDiagnostics() async {
+    final log = AuthService.instance.debugLog.value;
+    final text = log.isEmpty ? '(empty)' : log.join('\n');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Diagnostics'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text,
+              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Copy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(S.of(context)['close']),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAccountSection(S s, ColorScheme scheme) {
     if (!AuthService.instance.isAvailable) {
       return Card(
@@ -834,28 +871,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 24),
                 _SectionTitle(s['about'], icon: Icons.info_outline),
-                Card(
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.verified_user_outlined,
-                          color: scheme.primary,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            s['aboutText'],
-                            style: TextStyle(
-                              fontSize: 14,
-                              height: 1.4,
-                              color: scheme.onSurfaceVariant,
+                // Long-press opens a hidden diagnostics log (auth, sync, page
+                // render, folder load timing) so an issue can be diagnosed from
+                // a real device without adb. Deliberate gesture only, so it
+                // never surfaces in normal use.
+                GestureDetector(
+                  onLongPress: _showDiagnostics,
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.verified_user_outlined,
+                            color: scheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              s['aboutText'],
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.4,
+                                color: scheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

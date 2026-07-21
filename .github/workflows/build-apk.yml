@@ -28,24 +28,23 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
 
-      - name: Restore upload keystore (only if the secret is set)
-        env:
-          KS: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+      # Sign the preview APK deterministically with the committed preview
+      # keystore, whose SHA-1 (26:87:22:9F:7B:AF:A5:83:6D:E7:E8:EF:FE:2D:FB:
+      # 4F:A4:A0:4E:6E) is registered in Firebase for com.rotem.quicksign —
+      # so Google Sign-In works. This is a PREVIEW-ONLY key, not the Play
+      # store signing identity (Play App Signing manages that separately).
+      - name: Use preview signing keystore
         run: |
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > android/app/keystore.jks
-            echo "SIGNED_WITH=upload keystore (Google Sign-In works)" >> "$GITHUB_ENV"
-          else
-            echo "SIGNED_WITH=debug key (Google Sign-In will NOT work — set UPLOAD_* secrets)" >> "$GITHUB_ENV"
-          fi
+          cp ci/quicksign-preview.keystore android/app/keystore.jks
+          {
+            echo "KEYSTORE_STORE_PASS=quicksignpreview"
+            echo "KEYSTORE_ALIAS=quicksign"
+            echo "KEYSTORE_KEY_PASS=quicksignpreview"
+          } >> "$GITHUB_ENV"
 
       - run: flutter pub get
 
       - name: Build release APK
-        env:
-          KEYSTORE_STORE_PASS: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
-          KEYSTORE_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
-          KEYSTORE_KEY_PASS: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
           flutter build apk --release \
             --build-name=1.0.0 \
@@ -59,5 +58,5 @@ jobs:
           body: |
             Installable preview build of QuickSign.
             Commit: ${{ github.sha }}
-            Signed with: ${{ env.SIGNED_WITH }}
+            Signed with: preview keystore (SHA-1 26:87:…:4E:6E, registered in Firebase — Google Sign-In works)
           files: build/app/outputs/flutter-apk/app-release.apk

@@ -27,6 +27,10 @@ class S {
       'copySaved': 'הקובץ נשמר',
       'deleted': 'הפריט הוסר',
       'undo': 'ביטול',
+      'deleteConfirmTitle': 'מחיקת פריט',
+      'deleteConfirmBody': 'למחוק את הפריט?',
+      'deleteConfirmCloudBody':
+          'הפריט יימחק גם מהחשבון שלך בענן, בכל המכשירים. הפעולה סופית. להמשיך?',
       'myStamp': 'החותמת שלי',
       'savedSignature': 'החתימה השמורה',
       'tapToPlace': 'לחיצה ארוכה על הדף — וגרירה לסימון גודל',
@@ -212,6 +216,10 @@ class S {
       'copySaved': 'File saved',
       'deleted': 'Item removed',
       'undo': 'Undo',
+      'deleteConfirmTitle': 'Delete item',
+      'deleteConfirmBody': 'Delete this item?',
+      'deleteConfirmCloudBody':
+          'This will also delete it from your account in the cloud, on every device. This is permanent. Continue?',
       'myStamp': 'My stamp',
       'savedSignature': 'Saved signature',
       'tapToPlace': 'Long-press the page — drag to mark the size',

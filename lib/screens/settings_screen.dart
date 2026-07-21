@@ -432,7 +432,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _delete(SavedMark mark) async {
     final s = S.of(context);
+    // Warn before deleting — when signed in, the delete also propagates to the
+    // account (cloud) on every device, permanently, so confirm intent first.
+    final signedIn = AuthService.instance.currentUser != null;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s['deleteConfirmTitle']),
+        content: Text(
+          signedIn ? s['deleteConfirmCloudBody'] : s['deleteConfirmBody'],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(s['cancel']),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(s['delete']),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     await _marksService.delete(mark.id);
+    // Propagate the delete to the account so it doesn't reappear on next sync.
+    unawaited(CloudSyncService.instance.deleteMark(mark.id));
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -444,6 +470,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           action: SnackBarAction(
             label: s['undo'],
             onPressed: () async {
+              // Restore locally; the debounced push re-adds it to the account.
               await _marksService.restore(mark);
               await _load();
             },

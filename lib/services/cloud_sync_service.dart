@@ -181,6 +181,21 @@ class CloudSyncService {
     return restored;
   }
 
+  /// Removes a mark from the account, so a local delete propagates to the
+  /// cloud — the union-merge push never deletes on its own, so without this a
+  /// deleted mark would reappear on the next pull. Best-effort; no-op when
+  /// signed out (nothing in the cloud to remove).
+  Future<void> deleteMark(String id) async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) return;
+    try {
+      await _userDoc(user.uid).collection('marks').doc(id).delete();
+      _log('CloudSync: deleted cloud mark $id');
+    } catch (e) {
+      _log('CloudSync: delete cloud mark $id failed: $e');
+    }
+  }
+
   /// User-triggered sync (the "Sync now" button). Pulls then pushes, and
   /// returns a human-readable result — success count or the exact error.
   Future<({bool ok, String message})> syncNow() async {

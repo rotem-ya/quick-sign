@@ -8,7 +8,7 @@ name: Deploy web to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/document-signing-app-k3ae8n]
+    branches: [main, claude/document-signing-app-k3ae8n, claude/app-store-submission-kr520m]
   workflow_dispatch:
 
 permissions:

@@ -845,37 +845,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 24),
                 _SectionTitle(s['about'], icon: Icons.info_outline),
-                // Long-press the About card to copy the diagnostics log (auth,
-                // sync, page render, folder-load timing) straight to the
-                // clipboard — a hidden gesture to grab a report from a real
-                // device without adb.
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onLongPress: _copyDiagnostics,
-                  child: Card(
-                    margin: EdgeInsets.zero,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.verified_user_outlined,
-                            color: scheme.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              s['aboutText'],
-                              style: TextStyle(
-                                fontSize: 14,
-                                height: 1.4,
-                                color: scheme.onSurfaceVariant,
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.verified_user_outlined,
+                              color: scheme.primary,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                s['aboutText'],
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  height: 1.4,
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      const Divider(height: 1),
+                      // Explicit, reliable way to grab the on-device log for a
+                      // bug report (auth, sync, page render, folder timing).
+                      ListTile(
+                        leading: Icon(
+                          Icons.bug_report_outlined,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        title: Text(s['copyDiagnostics']),
+                        onTap: _copyDiagnostics,
+                      ),
+                    ],
                   ),
                 ),
               ],

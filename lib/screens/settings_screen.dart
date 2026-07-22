@@ -495,40 +495,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Hidden diagnostics — long-press the About card. Shows the rolling
+  /// Hidden diagnostics — long-press the About card to copy the rolling
   /// on-device log (auth, cloud sync, page-render failures, folder-load
-  /// timing) with a copy button so it can be shared for a bug report.
-  Future<void> _showDiagnostics() async {
+  /// timing) straight to the clipboard for a bug report.
+  Future<void> _copyDiagnostics() async {
     final log = AuthService.instance.debugLog.value;
     final text = log.isEmpty ? '(empty)' : log.join('\n');
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Diagnostics'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              text,
-              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: text));
-              if (ctx.mounted) Navigator.of(ctx).pop();
-            },
-            child: const Text('Copy'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(S.of(context)['close']),
-          ),
-        ],
-      ),
-    );
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) _snack(S.of(context)['diagCopied']);
   }
 
   Widget _buildAccountSection(S s, ColorScheme scheme) {
@@ -871,14 +845,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 24),
                 _SectionTitle(s['about'], icon: Icons.info_outline),
-                // Tapping the About card opens the diagnostics log (auth,
-                // sync, page render, folder-load timing) — the bug icon hints
-                // it's tappable. Used to diagnose issues from a real device
-                // without adb.
+                // Long-press the About card to copy the diagnostics log (auth,
+                // sync, page render, folder-load timing) straight to the
+                // clipboard — a hidden gesture to grab a report from a real
+                // device without adb.
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: _showDiagnostics,
-                  onLongPress: _showDiagnostics,
+                  onLongPress: _copyDiagnostics,
                   child: Card(
                     margin: EdgeInsets.zero,
                     child: Padding(
@@ -899,12 +872,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 color: scheme.onSurfaceVariant,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.bug_report_outlined,
-                            size: 18,
-                            color: scheme.outline,
                           ),
                         ],
                       ),

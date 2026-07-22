@@ -218,9 +218,15 @@ class QuickSignApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // Locked to the polished light theme for now: the design system uses
+      // hand-picked light-mode colors throughout (section titles, toolbars,
+      // etc. hardcode dark ink), so following the system into dark mode left
+      // dark-on-dark text (e.g. invisible section headers). A proper dark
+      // palette is a follow-up; until then a consistent light UI beats a
+      // half-styled dark one.
       theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
-      themeMode: ThemeMode.system,
+      darkTheme: _theme(Brightness.light),
+      themeMode: ThemeMode.light,
       navigatorObservers: [routeObserver],
       home: const WorkScreen(),
     );

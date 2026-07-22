@@ -201,6 +201,28 @@ class ImportService {
     }
   }
 
+  /// Returns new PDF bytes with [pageIndex] rotated 90° — clockwise when
+  /// [clockwise], else counter-clockwise. The rotation is baked into the
+  /// page's `/Rotate` attribute, so both the on-screen render (pdfx) and the
+  /// rasterized export reflect it. The rest of the pipeline re-derives from
+  /// these bytes, keeping display and export in sync.
+  static Uint8List rotatePage(
+    Uint8List pdfBytes,
+    int pageIndex, {
+    required bool clockwise,
+  }) {
+    final document = PdfDocument(inputBytes: pdfBytes);
+    try {
+      final page = document.pages[pageIndex];
+      final delta = clockwise ? 1 : 3; // +90° CW, +270° == −90° CCW
+      final next = (page.rotation.index + delta) % 4;
+      page.rotation = PdfPageRotateAngle.values[next];
+      return Uint8List.fromList(document.saveSync());
+    } finally {
+      document.dispose();
+    }
+  }
+
   /// Appends every page of [otherPdfBytes] onto [baseBytes] — merging in
   /// another PDF's pages, preserving their vector content via PDF templates.
   static Uint8List mergePdfPages(Uint8List baseBytes, Uint8List otherPdfBytes) {

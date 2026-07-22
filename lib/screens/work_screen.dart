@@ -818,6 +818,76 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     setState(() => _session = newSession);
   }
 
+  /// Rotates the current page 90° (clockwise or counter-clockwise). The
+  /// rotation is baked into the PDF and the document is rebuilt, so display
+  /// and export stay identical. Placements on the page turn with it.
+  Future<void> _rotateCurrentPage({required bool clockwise}) async {
+    final session = _session;
+    if (session == null || _busy) return;
+    final pageIndex = _currentPageNotifier.value;
+    if (pageIndex < 0 || pageIndex >= session.pageSizes.length) return;
+    final old = session.pageSizes[pageIndex];
+    setState(() => _busy = true);
+    try {
+      final newBytes = ImportService.rotatePage(
+        session.pdfBytes,
+        pageIndex,
+        clockwise: clockwise,
+      );
+      final newSession = await _importService.openBytes(
+        newBytes,
+        fileName: session.fileName,
+      );
+      final quarter = clockwise ? math.pi / 2 : -math.pi / 2;
+      final remapped = <Placement>[];
+      for (final p in session.placements.value) {
+        if (p.pageIndex != pageIndex) {
+          remapped.add(_clonePlacement(p, p.nx, p.ny, p.widthFraction, p.rotation));
+          continue;
+        }
+        // Center maps into the rotated page; widthFraction is relative to the
+        // page width, which becomes the old height after a quarter turn, so
+        // rescale it to keep the placement's real-world size.
+        final nx = clockwise ? 1 - p.ny : p.ny;
+        final ny = clockwise ? p.nx : 1 - p.nx;
+        final wf = old.height == 0
+            ? p.widthFraction
+            : p.widthFraction * old.width / old.height;
+        remapped.add(_clonePlacement(p, nx, ny, wf, p.rotation + quarter));
+      }
+      newSession.addAll(remapped);
+      session.dispose();
+      if (!mounted) {
+        newSession.dispose();
+        return;
+      }
+      setState(() => _session = newSession);
+    } catch (e) {
+      if (mounted) _snack(S.of(context)['exportError']);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Placement _clonePlacement(
+    Placement p,
+    double nx,
+    double ny,
+    double widthFraction,
+    double rotation,
+  ) =>
+      Placement(
+        type: p.type,
+        pageIndex: p.pageIndex,
+        nx: nx,
+        ny: ny,
+        widthFraction: widthFraction,
+        aspectRatio: p.aspectRatio,
+        imageBytes: p.imageBytes,
+        text: p.text,
+        groupId: p.groupId,
+      )..rotation = rotation;
+
   /// Pulls a stamp straight out of the document currently open — useful for
   /// a document that already has a real stamped/signed example on one of
   /// its pages, instead of only preparing a fresh stamp in Settings.
@@ -1096,13 +1166,16 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                   children: [
                     _buildLogo(),
                     const SizedBox(width: 9),
-                    Text(
-                      s['appTitle'],
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                        color: DesignTokens.ink,
+                    Flexible(
+                      child: Text(
+                        s['appTitle'],
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                          color: DesignTokens.ink,
+                        ),
                       ),
                     ),
                     const Spacer(),
@@ -1111,6 +1184,20 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
                         icon: Icons.post_add_outlined,
                         tooltip: s['managePages'],
                         onTap: _busy ? null : _managePages,
+                      ),
+                    if (session != null)
+                      _HeaderIconButton(
+                        icon: Icons.rotate_90_degrees_ccw_outlined,
+                        tooltip: s['rotateLeft'],
+                        onTap:
+                            _busy ? null : () => _rotateCurrentPage(clockwise: false),
+                      ),
+                    if (session != null)
+                      _HeaderIconButton(
+                        icon: Icons.rotate_90_degrees_cw_outlined,
+                        tooltip: s['rotateRight'],
+                        onTap:
+                            _busy ? null : () => _rotateCurrentPage(clockwise: true),
                       ),
                     if (session != null)
                       _HeaderIconButton(

@@ -871,11 +871,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 24),
                 _SectionTitle(s['about'], icon: Icons.info_outline),
-                // Long-press opens a hidden diagnostics log (auth, sync, page
-                // render, folder load timing) so an issue can be diagnosed from
-                // a real device without adb. Deliberate gesture only, so it
-                // never surfaces in normal use.
+                // Tapping the About card opens the diagnostics log (auth,
+                // sync, page render, folder-load timing) — the bug icon hints
+                // it's tappable. Used to diagnose issues from a real device
+                // without adb.
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _showDiagnostics,
                   onLongPress: _showDiagnostics,
                   child: Card(
                     margin: EdgeInsets.zero,
@@ -897,6 +899,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 color: scheme.onSurfaceVariant,
                               ),
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.bug_report_outlined,
+                            size: 18,
+                            color: scheme.outline,
                           ),
                         ],
                       ),

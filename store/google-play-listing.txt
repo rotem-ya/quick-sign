@@ -3,7 +3,7 @@ GOOGLE PLAY — STORE LISTING (QuickSign)
 ========================================
 
 App name:
-QuickSign — חתימה על מסמכים
+QuickSign - Sign PDF
 
 Short description (עד 80 תווים):
 חתמו על PDF ותמונות ישירות בטלפון. הכול נשאר במכשיר — בלי שרת, בלי הרשמה.
@@ -29,7 +29,7 @@ QuickSign הופך חתימה על מסמכים לפעולה של כמה שני�
 --- ENGLISH ---
 
 App name:
-QuickSign — Sign Documents
+QuickSign - Sign PDF
 
 Short description (<=80 chars):
 Sign PDFs and images right on your phone. Everything stays on-device.

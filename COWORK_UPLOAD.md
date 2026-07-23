@@ -14,7 +14,7 @@
 
 1. הורד ופתח את ה-ZIP. ה-AAB הוא `app-release.aab`.
 2. Play Console (חשבון "Ask The Kids") → **Create app**:
-   שם `QuickSign`, שפת בסיס עברית, App, Free.
+   שם `QuickSign - Sign PDF`, שפת בסיס עברית, App, Free.
 3. **Store listing** — הדבק מ-`store/google-play-listing.txt`
    (שם, תיאור קצר, תיאור מלא, קטגוריה Productivity). העלה:
    - אייקון 512×512 (מהפרויקט), Feature graphic (`store/feature_graphic_1024x500.png`),
@@ -41,7 +41,7 @@ Play חותם מחדש את האפליקציה במפתח משלו (Play App Sig
 דורש Apple Developer (Rotem Yakov, Team ID `3X9M84JZD7` — קיים) ו-Codemagic.
 
 1. **App Store Connect** → My Apps → **+ New App**: iOS, שם `QuickSign`,
-   Bundle ID `com.rotem.quicksign` (ה-App ID כבר קיים), SKU `quicksign`,
+   שם `QuickSign - Sign PDF`, Bundle ID `com.rotem.quicksign` (ה-App ID כבר קיים), SKU `quicksign`,
    שפה ראשית עברית.
 2. **App Store Connect API key** (Users and Access → Integrations → Keys) →
    הוסף ב-Codemagic כ-integration בשם **בדיוק** `Apple_Key_QuickSign`.

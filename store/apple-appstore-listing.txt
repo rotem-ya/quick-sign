@@ -2,9 +2,9 @@
 APPLE APP STORE — LISTING (QuickSign)
 ========================================
 
-App name: QuickSign
-Subtitle (עד 30 תווים): חתימה על מסמכים בטלפון
-Subtitle (EN, <=30): Sign documents on your phone
+App name: QuickSign - Sign PDF
+Subtitle (עד 30 תווים): חתימה על מסמכים וחותמת
+Subtitle (EN, <=30): Sign documents & stamps
 
 Promotional text (עד 170 תווים):
 חתמו על PDF ותמונות ישירות בטלפון — ביד או בחותמת. הכול נשאר במכשיר, בלי שרת ובלי הרשמה.
@@ -43,7 +43,8 @@ back. The signed document is flattened permanently.
 
 No ads, no tracking.
 
-Keywords (<=100 chars): sign,signature,pdf,document,stamp,esign,form,fill,scan
+Keywords (<=100 chars): חתימה,חותמת,מסמך,לחתום,esign,signature,document,stamp,form,fill,scan
+(Note: "Sign" and "PDF" are already in the app name — Apple ignores repeats, so they were dropped here to make room for Hebrew keywords.)
 
 Support URL: https://quicksign-7c212.web.app/privacy.html
 Marketing URL: https://rotem-ya.github.io/quick-sign/

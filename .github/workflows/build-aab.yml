@@ -51,6 +51,8 @@ jobs:
           cp STORE_SUBMISSION.md pkg/store/ 2>/dev/null || true
           cp web/privacy.html pkg/store/privacy.html 2>/dev/null || true
           cp assets/store/feature_graphic_1024x500.png pkg/store/ 2>/dev/null || true
+          cp assets/store/play_icon_512.png pkg/store/ 2>/dev/null || true
+          cp assets/store/screenshot_*.png pkg/store/ 2>/dev/null || true
           cd pkg && zip -r ../quicksign-submission.zip . && cd ..
           ls -la quicksign-submission.zip
 

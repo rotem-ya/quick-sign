@@ -1,17 +1,9 @@
-# Builds a signed Android App Bundle (AAB) for Google Play.
+# Builds a signed Android App Bundle (AAB) for Google Play, then packages it in
+# a ZIP together with all the store-listing texts + assets and publishes the ZIP
+# to the 'aab-submission' Release for a one-click download.
 #
-# One-time setup by the product owner (see COWORK.md for the exact steps):
-# 1. Generate an upload keystore (`keytool -genkey ...`) and keep it safe —
-#    it's the permanent signing identity of the app on Play.
-# 2. GitHub repo → Settings → Secrets and variables → Actions, add:
-#    - UPLOAD_KEYSTORE_BASE64  (base64 -w0 of the .jks file)
-#    - UPLOAD_KEYSTORE_PASSWORD
-#    - UPLOAD_KEY_ALIAS
-#    - UPLOAD_KEY_PASSWORD
-#
-# Trigger this workflow by pushing a change to .github/aab-release.txt (any
-# content — it's just a marker file), pushing an `aab-v*` tag, or via
-# "Run workflow" in the Actions UI.
+# Signing uses the UPLOAD_* secrets (see COWORK_UPLOAD.md). Trigger it by pushing
+# a change to .github/aab-release.txt, or via "Run workflow".
 name: Build AAB (Google Play)
 
 on:
@@ -21,8 +13,11 @@ on:
         description: "Version name (e.g. 1.0.0)"
         default: "1.0.0"
   push:
-    tags: ["aab-v*"]
+    branches: [claude/app-store-submission-kr520m, main]
     paths: [".github/aab-release.txt"]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -48,7 +43,31 @@ jobs:
             --build-name="${{ github.event.inputs.build_name || '1.0.0' }}" \
             --build-number="${{ github.run_number }}"
 
+      - name: Assemble submission package
+        run: |
+          mkdir -p pkg/store
+          cp build/app/outputs/bundle/release/app-release.aab pkg/
+          cp store/*.txt pkg/store/ 2>/dev/null || true
+          cp STORE_SUBMISSION.md pkg/store/ 2>/dev/null || true
+          cp web/privacy.html pkg/store/privacy.html 2>/dev/null || true
+          cp assets/store/feature_graphic_1024x500.png pkg/store/ 2>/dev/null || true
+          cd pkg && zip -r ../quicksign-submission.zip . && cd ..
+          ls -la quicksign-submission.zip
+
       - uses: actions/upload-artifact@v4
         with:
-          name: app-release-aab
-          path: build/app/outputs/bundle/release/app-release.aab
+          name: quicksign-submission
+          path: quicksign-submission.zip
+
+      - name: Publish submission ZIP to a Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: aab-submission
+          name: QuickSign — submission package (AAB + texts)
+          body: |
+            Google Play submission package for QuickSign.
+            Commit: ${{ github.sha }}
+            Contents: app-release.aab + store/ (listing texts, data-safety
+            answers, privacy.html, feature graphic).
+            See COWORK_UPLOAD.md for the upload steps.
+          files: quicksign-submission.zip

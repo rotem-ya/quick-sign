@@ -1,0 +1,58 @@
+========================================
+APPLE APP STORE — LISTING (QuickSign)
+========================================
+
+App name: QuickSign
+Subtitle (עד 30 תווים): חתימה על מסמכים בטלפון
+Subtitle (EN, <=30): Sign documents on your phone
+
+Promotional text (עד 170 תווים):
+חתמו על PDF ותמונות ישירות בטלפון — ביד או בחותמת. הכול נשאר במכשיר, בלי שרת ובלי הרשמה.
+
+Description (עברית):
+--------------------
+QuickSign הופך חתימה על מסמכים לפעולה של כמה שניות — והכול קורה מקומית במכשיר.
+
+קבלו מסמך דרך שיתוף, "פתיחה באמצעות", או בחירת קובץ (PDF / JPG / PNG). הקישו
+במקום שבו רוצים לחתום, חתמו ביד או בחותמת שמורה, ושלחו חזרה. המסמך החתום משוטח
+לתמיד — החתימה נצרבת לפיקסלי הדף.
+
+• פרטיות מלאה — המסמכים לעולם לא עוזבים את המכשיר.
+• חתימה ביד או בחותמת, חתימה על כל העמודים בבת אחת.
+• חילוץ חותמת מצילום, הסרת רקע אוטומטית.
+• הערות טקסט בעברית ואנגלית.
+• סיבוב דפים, גרירה, שינוי גודל, מחיקה עם ביטול.
+• ייצוא בשיתוף / שמירה לכל תיקייה.
+• גיבוי אופציונלי של חתימות והגדרות לחשבון (Google / Apple / אימייל).
+
+בלי פרסומות, בלי מעקב.
+
+Description (English):
+QuickSign turns signing a document into a few-second task — all locally on your
+device. Receive a document via share, "Open with", or by picking a file (PDF /
+JPG / PNG). Tap where to sign, sign by hand or with a saved stamp, and send it
+back. The signed document is flattened permanently.
+
+• Full privacy — documents never leave your device.
+• Sign by hand or stamp; sign every page at once.
+• Extract a stamp from a photo, background removed automatically.
+• Text notes in Hebrew and English.
+• Rotate pages, drag, resize, delete with undo.
+• Export via share / save to any folder.
+• Optional backup of signatures & settings to an account (Google / Apple / email).
+
+No ads, no tracking.
+
+Keywords (<=100 chars): sign,signature,pdf,document,stamp,esign,form,fill,scan
+
+Support URL: https://quicksign-7c212.web.app/privacy.html
+Marketing URL: https://rotem-ya.github.io/quick-sign/
+Privacy Policy URL: https://quicksign-7c212.web.app/privacy.html
+
+Bundle ID: com.rotem.quicksign
+SKU: quicksign
+Primary language: Hebrew
+Category: Productivity
+Age rating: 4+
+
+Sign in with Apple: supported (required by App Store since Google sign-in is offered).

@@ -1,0 +1,67 @@
+========================================
+GOOGLE PLAY — STORE LISTING (QuickSign)
+========================================
+
+App name:
+QuickSign — חתימה על מסמכים
+
+Short description (עד 80 תווים):
+חתמו על PDF ותמונות ישירות בטלפון. הכול נשאר במכשיר — בלי שרת, בלי הרשמה.
+
+Full description (עברית):
+------------------------
+QuickSign הופך חתימה על מסמכים לפעולה של כמה שניות — והכול קורה מקומית במכשיר.
+
+קבלו מסמך דרך שיתוף מוואטסאפ או מייל, "פתיחה באמצעות", או בחירת קובץ (PDF / JPG
+/ PNG). הקישו במקום שבו רוצים לחתום, חתמו ביד או בחותמת שמורה, ושלחו חזרה. המסמך
+החתום משוטח לתמיד — החתימה נצרבת לפיקסלי הדף ואי אפשר להזיז או לחלץ אותה.
+
+• פרטיות מלאה — המסמכים לעולם לא עוזבים את המכשיר. אין שרת, אין העלאה.
+• חתימה ביד או בחותמת שמורה, כולל חתימה על כל העמודים בבת אחת.
+• חילוץ חותמת מתוך צילום מסמך — הרקע הלבן מוסר אוטומטית.
+• הוספת הערות טקסט בעברית ובאנגלית, WYSIWYG מלא.
+• סיבוב דפים, גרירה, הגדלה/הקטנה, מחיקה עם ביטול.
+• ייצוא בשיתוף, שמירה ל-Drive / OneDrive / כל תיקייה, או הורדה.
+• גיבוי אופציונלי של החתימות וההגדרות לחשבון Google/Apple/אימייל — לא של המסמכים.
+
+בלי הרשמה חובה, בלי פרסומות, בלי מעקב.
+
+--- ENGLISH ---
+
+App name:
+QuickSign — Sign Documents
+
+Short description (<=80 chars):
+Sign PDFs and images right on your phone. Everything stays on-device.
+
+Full description (English):
+QuickSign turns signing a document into a few-second task — and it all happens
+locally on your device.
+
+Receive a document via share from WhatsApp or email, "Open with", or by picking
+a file (PDF / JPG / PNG). Tap where you want to sign, sign by hand or with a
+saved stamp, and send it back. The signed document is flattened permanently —
+the signature is baked into the page pixels and cannot be moved or extracted.
+
+• Full privacy — documents never leave your device. No server, no upload.
+• Sign by hand or with a saved stamp, including signing every page at once.
+• Extract a stamp from a photo of a document — the white background is removed.
+• Add text notes in Hebrew and English, fully WYSIWYG.
+• Rotate pages, drag, resize, delete with undo.
+• Export via share, save to Drive / OneDrive / any folder, or download.
+• Optional backup of your signatures and settings to a Google/Apple/email
+  account — never your documents.
+
+No mandatory sign-up, no ads, no tracking.
+
+Keywords / tags:
+חתימה, מסמכים, PDF, חתימה דיגיטלית, חותמת, טפסים, sign, signature
+
+Privacy policy URL:
+https://quicksign-7c212.web.app/privacy.html
+(fallback: https://rotem-ya.github.io/quick-sign/privacy.html)
+
+Category: Productivity
+Content rating: Everyone
+Contains ads: No
+In-app purchases: No

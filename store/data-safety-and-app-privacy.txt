@@ -1,0 +1,41 @@
+========================================
+DATA SAFETY (Google Play) + APP PRIVACY (Apple)
+QuickSign — ready-to-fill answers
+========================================
+
+CORE FACT: The documents being signed NEVER leave the device — do not declare
+them anywhere. Only optional account sign-in collects data.
+
+--- GOOGLE PLAY: Data safety form ---
+
+Does your app collect or share any user data? -> YES (only with optional sign-in)
+
+Data types collected (all Optional, NOT shared, encrypted in transit):
+  • Personal info > Name        — purpose: App functionality, Account management
+  • Personal info > Email       — purpose: App functionality, Account management
+  • Photos/videos > Photos      — (the user's own saved signatures/stamps)
+                                  purpose: App functionality
+
+Is all data encrypted in transit?         -> Yes
+Can users request data deletion?          -> Yes (sign out in-app + email support)
+Is data collection optional?              -> Yes (app fully usable without it)
+Documents being signed                    -> NOT collected, NOT shared (declare nothing)
+
+--- APPLE: App Privacy ---
+
+Data collected: Name, Email Address, User Content (signature/stamp images).
+Linked to the user's identity: Yes.
+Used for tracking: NO.
+Purpose: App Functionality (Name/Email also Account Management).
+Documents being signed: NOT collected — do not declare.
+
+--- OTHER QUESTIONNAIRES ---
+
+Content rating / age:  Everyone / 4+ (no mature content).
+Target audience:       Adults / general (not directed at children).
+App access:            "All functionality available without special access"
+                       (no login needed for a reviewer).
+Ads:                   No ads in this version.
+
+Contact / support email: rot4735@gmail.com
+Privacy policy URL:      https://quicksign-7c212.web.app/privacy.html

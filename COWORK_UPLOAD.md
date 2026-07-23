@@ -21,7 +21,7 @@
      (`store/feature_graphic_1024x500.png`),
    - צילומי מסך (`store/screenshot_1_home.png`, `screenshot_2_signing.png`,
      `screenshot_3_privacy.png` — כולם 1080×1920).
-4. **Privacy policy** = `https://quicksign-7c212.web.app/privacy.html`
+4. **Privacy policy** = `https://rotem-ya.github.io/quick-sign/privacy.html`
 5. **Data safety** + **Content rating** + **Target audience** + **App access**
    — כל התשובות ב-`store/data-safety-and-app-privacy.txt`. Ads = No.
 6. **Testing → Internal testing → Create release** → העלה את `app-release.aab`

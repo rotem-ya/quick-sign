@@ -58,8 +58,7 @@ Keywords / tags:
 חתימה, מסמכים, PDF, חתימה דיגיטלית, חותמת, טפסים, sign, signature
 
 Privacy policy URL:
-https://quicksign-7c212.web.app/privacy.html
-(fallback: https://rotem-ya.github.io/quick-sign/privacy.html)
+https://rotem-ya.github.io/quick-sign/privacy.html
 
 Category: Productivity
 Content rating: Everyone

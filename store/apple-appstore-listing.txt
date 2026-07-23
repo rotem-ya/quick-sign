@@ -46,9 +46,9 @@ No ads, no tracking.
 Keywords (<=100 chars): חתימה,חותמת,מסמך,לחתום,esign,signature,document,stamp,form,fill,scan
 (Note: "Sign" and "PDF" are already in the app name — Apple ignores repeats, so they were dropped here to make room for Hebrew keywords.)
 
-Support URL: https://quicksign-7c212.web.app/privacy.html
+Support URL: https://rotem-ya.github.io/quick-sign/privacy.html
 Marketing URL: https://rotem-ya.github.io/quick-sign/
-Privacy Policy URL: https://quicksign-7c212.web.app/privacy.html
+Privacy Policy URL: https://rotem-ya.github.io/quick-sign/privacy.html
 
 Bundle ID: com.rotem.quicksign
 SKU: quicksign

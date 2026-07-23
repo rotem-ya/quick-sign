@@ -38,4 +38,4 @@ App access:            "All functionality available without special access"
 Ads:                   No ads in this version.
 
 Contact / support email: rot4735@gmail.com
-Privacy policy URL:      https://quicksign-7c212.web.app/privacy.html
+Privacy policy URL:      https://rotem-ya.github.io/quick-sign/privacy.html

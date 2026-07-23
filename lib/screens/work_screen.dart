@@ -818,55 +818,43 @@ class _WorkScreenState extends State<WorkScreen> with RouteAware {
     setState(() => _session = newSession);
   }
 
-  /// Rotates the current page 90° (clockwise or counter-clockwise). The
-  /// rotation is baked into the PDF and the document is rebuilt, so display
-  /// and export stay identical. Placements on the page turn with it.
-  Future<void> _rotateCurrentPage({required bool clockwise}) async {
+  /// Rotates the current page 90°. Fast: only this page's rendered image is
+  /// rotated (via the render service) and its cache evicted — the PDF isn't
+  /// rebuilt and other pages aren't touched, so it's instant even in a big
+  /// document. Display and export both read the rotated render, keeping
+  /// WYSIWYG; placements on the page turn with it.
+  void _rotateCurrentPage({required bool clockwise}) {
     final session = _session;
     if (session == null || _busy) return;
     final pageIndex = _currentPageNotifier.value;
     if (pageIndex < 0 || pageIndex >= session.pageSizes.length) return;
     final old = session.pageSizes[pageIndex];
-    setState(() => _busy = true);
-    try {
-      final newBytes = ImportService.rotatePage(
-        session.pdfBytes,
-        pageIndex,
-        clockwise: clockwise,
-      );
-      final newSession = await _importService.openBytes(
-        newBytes,
-        fileName: session.fileName,
-      );
-      final quarter = clockwise ? math.pi / 2 : -math.pi / 2;
-      final remapped = <Placement>[];
-      for (final p in session.placements.value) {
-        if (p.pageIndex != pageIndex) {
-          remapped.add(_clonePlacement(p, p.nx, p.ny, p.widthFraction, p.rotation));
-          continue;
-        }
-        // Center maps into the rotated page; widthFraction is relative to the
-        // page width, which becomes the old height after a quarter turn, so
-        // rescale it to keep the placement's real-world size.
-        final nx = clockwise ? 1 - p.ny : p.ny;
-        final ny = clockwise ? p.nx : 1 - p.nx;
-        final wf = old.height == 0
-            ? p.widthFraction
-            : p.widthFraction * old.width / old.height;
-        remapped.add(_clonePlacement(p, nx, ny, wf, p.rotation + quarter));
+
+    _renderService.rotatePage(pageIndex, clockwise: clockwise);
+    // The page's on-screen and exported dimensions swap with the quarter turn.
+    session.pageSizes[pageIndex] = Size(old.height, old.width);
+
+    // Turn placements on this page with it. widthFraction is relative to the
+    // page width, which becomes the old height, so rescale to keep real size.
+    final quarter = clockwise ? math.pi / 2 : -math.pi / 2;
+    final next = <Placement>[];
+    for (final p in session.placements.value) {
+      if (p.pageIndex != pageIndex) {
+        next.add(p);
+        continue;
       }
-      newSession.addAll(remapped);
-      session.dispose();
-      if (!mounted) {
-        newSession.dispose();
-        return;
-      }
-      setState(() => _session = newSession);
-    } catch (e) {
-      if (mounted) _snack(S.of(context)['exportError']);
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      final nx = clockwise ? 1 - p.ny : p.ny;
+      final ny = clockwise ? p.nx : 1 - p.nx;
+      final wf = old.height == 0
+          ? p.widthFraction
+          : p.widthFraction * old.width / old.height;
+      next.add(_clonePlacement(p, nx, ny, wf, p.rotation + quarter));
     }
+    session.placements.value = next;
+
+    // Rebuild: the rotated page re-renders (its cache was evicted); cached
+    // pages return their existing future and don't re-render.
+    setState(() {});
   }
 
   Placement _clonePlacement(

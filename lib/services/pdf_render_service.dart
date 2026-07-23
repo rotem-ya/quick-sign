@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show compute;
+import 'package:image/image.dart' as img;
 import 'package:pdfx/pdfx.dart';
 
 import 'auth_service.dart';
@@ -24,6 +26,22 @@ class PdfRenderService {
   PdfDocument? _document;
   List<Size> _pageSizes = const [];
   final Map<int, Future<Uint8List>> _cache = {};
+
+  /// Per-page display rotation in quarter turns (0..3, clockwise). Applied to
+  /// the rendered image only — the source PDF is untouched — so rotating a
+  /// page re-renders just that page instead of rebuilding the whole document.
+  final Map<int, int> _rotationTurns = {};
+
+  int rotationTurns(int pageIndex) => _rotationTurns[pageIndex] ?? 0;
+
+  /// Rotates [pageIndex] 90° and drops its cached render so it re-renders
+  /// rotated on next request. Returns the new quarter-turn count.
+  int rotatePage(int pageIndex, {required bool clockwise}) {
+    final next = ((_rotationTurns[pageIndex] ?? 0) + (clockwise ? 1 : 3)) % 4;
+    _rotationTurns[pageIndex] = next;
+    _cache.remove(pageIndex);
+    return next;
+  }
 
   /// Render scale relative to the page's point size. Long documents render
   /// lighter because every page image stays in memory while the document is
@@ -69,7 +87,11 @@ class PdfRenderService {
     return _cache.putIfAbsent(pageIndex, () async {
       final sw = Stopwatch()..start();
       try {
-        final bytes = await _renderPage(pageIndex).timeout(renderTimeout);
+        var bytes = await _renderPage(pageIndex).timeout(renderTimeout);
+        final turns = _rotationTurns[pageIndex] ?? 0;
+        if (turns != 0) {
+          bytes = await compute(_rotatePngTurns, (bytes: bytes, turns: turns));
+        }
         // Log slow renders so a "not loaded" report has a timing trail.
         if (sw.elapsedMilliseconds > 2500) {
           AuthService.instance.log(
@@ -119,9 +141,17 @@ class PdfRenderService {
 
   Future<void> close() async {
     _cache.clear();
+    _rotationTurns.clear();
     _pageSizes = const [];
     final doc = _document;
     _document = null;
     await doc?.close();
   }
+}
+
+/// Isolate entry: rotates a rendered PNG by [turns] quarter turns clockwise.
+Uint8List _rotatePngTurns(({Uint8List bytes, int turns}) req) {
+  final decoded = img.decodePng(req.bytes)!;
+  final rotated = img.copyRotate(decoded, angle: req.turns * 90);
+  return Uint8List.fromList(img.encodePng(rotated));
 }

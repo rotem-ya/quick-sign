@@ -211,8 +211,21 @@ class QuickSignApp extends StatelessWidget {
     return MaterialApp(
       onGenerateTitle: (context) => S.of(context)['appTitle'],
       debugShowCheckedModeBanner: false,
-      // Hebrew first — RTL layout comes from the locale automatically.
-      supportedLocales: const [Locale('he'), Locale('en')],
+      // International by default: follow the device language when we have a
+      // translation for it, otherwise fall back to English (the global
+      // default) — never to Hebrew. RTL/LTR layout comes from the resolved
+      // locale automatically. As more languages are added to S._tables, just
+      // list them here and resolution picks them up.
+      supportedLocales: const [Locale('en'), Locale('he')],
+      localeListResolutionCallback: (deviceLocales, supported) {
+        final supportedCodes = {for (final l in supported) l.languageCode};
+        for (final d in deviceLocales ?? const <Locale>[]) {
+          if (supportedCodes.contains(d.languageCode)) {
+            return Locale(d.languageCode);
+          }
+        }
+        return const Locale('en');
+      },
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

@@ -9,9 +9,12 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      # Must match the integration name created in Codemagic exactly
-      # (Teams → Integrations → App Store Connect → Manage keys).
-      app_store_connect: Apple_Key_QuickSign
+      # App Store Connect API keys are account/team-level, not per-app, so the
+      # existing Apple_Key_Trivia key (same Apple Developer account) uploads
+      # QuickSign too — it's the com.rotem.quicksign bundle + app record that
+      # target the right app. Must match the integration name in Codemagic
+      # exactly (Teams → Integrations → App Store Connect → Manage keys).
+      app_store_connect: Apple_Key_Trivia
     environment:
       ios_signing:
         distribution_type: app_store

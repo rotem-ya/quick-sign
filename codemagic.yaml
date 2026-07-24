@@ -16,28 +16,24 @@ workflows:
       # exactly (Teams → Integrations → App Store Connect → Manage keys).
       app_store_connect: Apple_Key_Trivia
     environment:
-      vars:
-        BUNDLE_ID: "com.rotem.quicksign"
+      # Managed automatic signing: with a distribution certificate stored in
+      # Codemagic (Team → Code signing identities → iOS) + the App Store Connect
+      # API key integration above, Codemagic fetches the certificate and
+      # auto-creates the App Store provisioning profile for this bundle id.
+      # (Signing needs a cert *with its private key*; App Store Connect only
+      # stores the public half, so the cert must be generated/stored in
+      # Codemagic once — it is then reused across builds.)
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.rotem.quicksign
       flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
-      - name: Set up code signing (create cert + profile if missing)
-        script: |
-          keychain initialize
-          # The managed ios_signing block only *fetches* existing profiles, so
-          # a brand-new app with none yet fails with "No matching profiles
-          # found". Using the App Store Connect API key directly, fetch OR
-          # create the distribution certificate + App Store provisioning
-          # profile for this bundle id (--create also registers the App ID in
-          # the Developer Portal if it doesn't exist yet).
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-          xcode-project use-profiles
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
       - name: Build signed IPA
         script: |
           flutter build ipa --release \
